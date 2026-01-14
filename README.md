@@ -4,26 +4,20 @@
 
 A lightweight popup for writing Git commit messages directly within Neovim.
 
-It solves four common pains:
-- the command line is too cramped for long messages,
-- switching to a terminal is annoying,
-- you want linters and autocompletion while typing,
-- and you often need a per-worktree draft “stash” before you’re ready to commit.
-
-If you prioritize detailed, descriptive commit messages (like [Mitchell Hashimoto's](https://x.com/mitchellh/status/1867314498723594247)), this tool is for you.
+It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.com/mitchellh/status/1867314498723594247)) by providing a dedicated writing environment.
 
 ## Features
 
-* **Home Court Advantage:** The input field is a standard markdown buffer (`filetype=markdown`). This means your existing formatters, linters, and LSP configs kick in automatically.
-* **Smart Drafts:** Automatically saves one draft per repository/worktree.
-* **Clean & Simple:** Just open the popup, write, and decide whether to **save**, **clear**, or **commit**.
+* **Full Editor Power:** The input field is a standard `markdown` buffer. Unlike the CLI, you get your **formatters, linters, spell checkers, and LSP completion** while you type.
+* **Worktree-Isolated Drafts:** Drafts are saved to `$(git rev-parse --absolute-git-dir)/commitpad/draft.md`. They persist between sessions, don't clutter your working directory (`git status` is clean), and handle `git worktree` contexts automatically.
+* **Simple Workflow:** Open the popup, write your message, then choose to **save** (draft), **clear**, or **commit**.
 
 ## Requirements
 
 - Neovim **0.10+** (uses `vim.system`)
 - [`MunifTanjim/nui.nvim`](https://github.com/MunifTanjim/nui.nvim)
 
-## lazy.nvim
+## Installation (lazy.nvim)
 
 ```lua
 {
