@@ -398,7 +398,7 @@ function M.open()
 		map(b, "n", "<Esc>", close, "Close")
 		map(b, { "n", "i" }, "<C-s>", save_draft, "Save draft")
 		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear")
-		map(b, { "n", "i" }, "<leader><CR>", do_commit, "Commit")
+		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
 		map(b, { "n", "i" }, "<C-j>", focus_desc, "Focus body")
