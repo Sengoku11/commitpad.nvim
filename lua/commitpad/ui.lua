@@ -292,6 +292,9 @@ function M.open()
 	end
 
 	local function toggle_focus()
+		-- ensure we end up in Normal mode even if Tab is pressed from Insert
+		vim.cmd("stopinsert")
+
 		local cur = vim.api.nvim_get_current_win()
 		if cur == title_popup.winid then
 			focus_desc()
@@ -393,8 +396,8 @@ function M.open()
 		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear")
 		map(b, { "n", "i" }, "<C-CR>", do_commit, "Commit")
 
-		map(b, { "n", "i" }, "<Tab>", toggle_focus, "Toggle focus")
-		map(b, { "n", "i" }, "<S-Tab>", toggle_focus, "Toggle focus")
+		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
+		map(b, { "n" }, "<S-Tab>", toggle_focus, "Toggle focus")
 		map(b, { "n", "i" }, "<C-j>", focus_desc, "Focus body")
 		map(b, { "n", "i" }, "<C-k>", focus_title, "Focus title")
 	end
