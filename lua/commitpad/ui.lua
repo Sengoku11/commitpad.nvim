@@ -397,7 +397,6 @@ function M.open()
 		map(b, { "n", "i" }, "<leader><CR>", do_commit, "Commit")
 
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
-		map(b, { "n" }, "<S-Tab>", toggle_focus, "Toggle focus")
 		map(b, { "n", "i" }, "<C-j>", focus_desc, "Focus body")
 		map(b, { "n", "i" }, "<C-k>", focus_title, "Focus title")
 	end
