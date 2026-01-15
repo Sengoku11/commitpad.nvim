@@ -6,6 +6,8 @@ A lightweight popup for writing Git commit messages directly within Neovim.
 
 It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.com/mitchellh/status/1867314498723594247)) by providing a dedicated writing environment.
 
+> **Note:** CommitPad assumes you have staged your changes (`git add`) before running. It also does not manage existing commits.
+
 ## Features
 
 * **Full Editor Power:** The input field is a standard `markdown` buffer. Unlike the CLI, you get your **formatters, linters, spell checkers, and LSP completion** while you type.
@@ -16,6 +18,20 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 
 - Neovim **0.10+** (uses `vim.system`)
 - [`MunifTanjim/nui.nvim`](https://github.com/MunifTanjim/nui.nvim)
+
+## Recommended Settings
+
+```lua
+-- Soft wrap lines at word boundaries, preserving indentation
+vim.opt.wrap = true -- Enable soft wrap (required for the options below)
+vim.opt.breakindent = true -- Visual indentation matches the code level
+vim.opt.linebreak = true -- Wrap at words, not arbitrary characters
+
+-- Builtin spell check
+vim.opt.spell = true
+vim.opt.spelllang = { 'en_us' }
+vim.opt.spelloptions = 'camel'
+```
 
 ## Installation (lazy.nvim)
 
