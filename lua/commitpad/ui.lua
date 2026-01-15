@@ -366,17 +366,21 @@ function M.open()
 	-- Load draft file into buffers.
 	-- If desc_buf existed before and is modified, don't clobber it.
 	local md = read_file(draft_path)
+	local is_clean = true
 	if md and md ~= "" then
 		local t, d = parse_draft(md)
 		set_lines(title_buf, { t })
 		if not existed_desc_buf or not vim.bo[desc_buf].modified then
 			set_lines(desc_buf, d)
 		end
+		local title_empty = trim(t or "") == ""
+		is_clean = title_empty
 	else
 		set_lines(title_buf, { "" })
 		if not existed_desc_buf or not vim.bo[desc_buf].modified then
 			set_lines(desc_buf, { "" })
 		end
+		is_clean = true
 	end
 
 	title_popup.border:set_text(
@@ -402,6 +406,9 @@ function M.open()
 	end
 
 	focus_title()
+	if is_clean then
+		vim.cmd("startinsert")
+	end
 end
 
 return M
