@@ -198,12 +198,29 @@ function M.open()
 		return
 	end
 
+	-- Prepare the spell settings before window creation.
+	-- This ignores local overrides in the current window (e.g. NvimTree)
+	local function prepare_spell(buf)
+		local lang = vim.go.spelllang
+		local spellfile = vim.go.spellfile
+
+		-- Safety fallback if global lang is empty
+		if lang == "" or not lang then
+			lang = "en"
+		end
+
+		pcall(vim.api.nvim_set_option_value, "spelllang", lang, { buf = buf })
+		pcall(vim.api.nvim_set_option_value, "spellfile", spellfile, { buf = buf })
+		pcall(vim.api.nvim_set_option_value, "spelloptions", vim.go.spelloptions, { buf = buf })
+	end
+
 	-- Title buffer is scratch and always created for the popup
 	local title_buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[title_buf].buftype = "nofile"
 	vim.bo[title_buf].swapfile = false
 	vim.bo[title_buf].bufhidden = "wipe"
 	vim.bo[title_buf].filetype = "gitcommit"
+	prepare_spell(title_buf)
 
 	-- Body buffer: reuse if already exists with the same name, otherwise create+name it.
 	local existed_desc_buf = bufnr_by_name(draft_path) ~= nil
@@ -220,6 +237,7 @@ function M.open()
 	vim.bo[desc_buf].swapfile = false
 	vim.bo[desc_buf].bufhidden = "hide" -- don't auto-wipe buffers you didn't create
 	vim.bo[desc_buf].filetype = "markdown"
+	prepare_spell(desc_buf)
 
 	local title_popup = Popup({
 		border = { style = "rounded", text = { top = " Title", top_align = "left" } },
@@ -362,6 +380,14 @@ function M.open()
 	end
 
 	layout:mount()
+
+	local function apply_win_opts(win)
+		-- Inherit from global vim.go.spell
+		pcall(vim.api.nvim_set_option_value, "spell", vim.go.spell, { win = win })
+	end
+
+	apply_win_opts(title_popup.winid)
+	apply_win_opts(desc_popup.winid)
 
 	-- Load draft file into buffers.
 	-- If desc_buf existed before and is modified, don't clobber it.
