@@ -285,12 +285,10 @@ function M.open()
 
 	local function focus_title()
 		vim.api.nvim_set_current_win(title_popup.winid)
-		vim.cmd("startinsert")
 	end
 
 	local function focus_desc()
 		vim.api.nvim_set_current_win(desc_popup.winid)
-		vim.cmd("startinsert")
 	end
 
 	local function toggle_focus()
