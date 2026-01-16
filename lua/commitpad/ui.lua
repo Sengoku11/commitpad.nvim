@@ -431,6 +431,8 @@ function M.open()
 		map(b, { "n", "i" }, "<C-k>", focus_title, "Focus title")
 	end
 
+	map(title_buf, "i", "<CR>", focus_desc, "Jump to body")
+
 	focus_title()
 	if is_clean then
 		vim.cmd("startinsert")
