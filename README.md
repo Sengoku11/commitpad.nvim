@@ -11,6 +11,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 ## Features
 
 * **Full Editor Power:** The input field is a standard `markdown` buffer. Unlike the CLI, you get your **formatters, linters, spell checkers, and LSP completion** while you type.
+* **Title Length:** Displays the title length as you type, making it easy to adhere to the 50/72 rule.
 * **Worktree-Isolated Drafts:** Drafts are saved to `$(git rev-parse --absolute-git-dir)/commitpad/draft.md`. They persist between sessions, don't clutter your working directory (`git status` is clean), and handle `git worktree` contexts automatically.
 * **Simple Workflow:** Open the popup, write your message, then choose to **save** (draft), **clear**, or **commit**.
 
