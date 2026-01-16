@@ -256,21 +256,54 @@ function M.open()
 		bufnr = desc_buf,
 	})
 
-	-- Enforce single-line title.
-	-- Triggers only if a newline actually exists (paste, enter, wrap), preserving cursor otherwise.
+	-- Setup namespace for the char counter
+	local ns_id = vim.api.nvim_create_namespace("commitpad_counter")
+
+	-- Combined logic: Enforce single-line title + Update Char Counter
+	-- Triggers on every change to keep UI in sync
+	local function update_title()
+		if not vim.api.nvim_buf_is_valid(title_buf) then
+			return
+		end
+
+		local lines = vim.api.nvim_buf_get_lines(title_buf, 0, -1, false)
+
+		-- 1. Enforce single line
+		if #lines > 1 then
+			local joined = table.concat(lines, " ")
+			set_lines(title_buf, { joined })
+			-- If in insert mode, put cursor at end of line to avoid jumping to start
+			if vim.api.nvim_get_mode().mode == "i" then
+				vim.api.nvim_win_set_cursor(0, { 1, #joined })
+			end
+			-- Update local var so counter uses the corrected text
+			lines = { joined }
+		end
+
+		-- 2. Char Counter logic
+		local line = lines[1] or ""
+		local count = vim.fn.strchars(line)
+		local limit_soft = 50
+		local limit_hard = 72
+
+		local hl = "Comment" -- Default
+		if count > limit_hard then
+			hl = "ErrorMsg" -- Red
+		elseif count > limit_soft then
+			hl = "WarningMsg" -- Yellow
+		end
+
+		vim.api.nvim_buf_clear_namespace(title_buf, ns_id, 0, -1)
+		vim.api.nvim_buf_set_extmark(title_buf, ns_id, 0, 0, {
+			virt_text = { { string.format(" [%d/%d]", count, limit_hard), hl } },
+			virt_text_pos = "right_align",
+			hl_mode = "combine",
+		})
+	end
+
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
 		buffer = title_buf,
-		callback = function()
-			local lines = vim.api.nvim_buf_get_lines(title_buf, 0, -1, false)
-			if #lines > 1 then
-				local joined = table.concat(lines, " ")
-				set_lines(title_buf, { joined })
-				-- If in insert mode, put cursor at end of line to avoid jumping to start
-				if vim.api.nvim_get_mode().mode == "i" then
-					vim.api.nvim_win_set_cursor(0, { 1, #joined })
-				end
-			end
-		end,
+		callback = update_title,
 	})
 
 	local layout = Layout(
@@ -443,6 +476,8 @@ function M.open()
 	end
 
 	map(title_buf, "i", "<CR>", focus_desc, "Jump to body")
+
+	update_title()
 
 	focus_title()
 	if is_clean then
