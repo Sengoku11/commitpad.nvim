@@ -256,12 +256,20 @@ function M.open()
 		bufnr = desc_buf,
 	})
 
-	-- Make title “single-line”
-	vim.api.nvim_create_autocmd("TextChangedI", {
+	-- Enforce single-line title.
+	-- Triggers only if a newline actually exists (paste, enter, wrap), preserving cursor otherwise.
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
 		buffer = title_buf,
 		callback = function()
-			local line = (vim.api.nvim_buf_get_lines(title_buf, 0, 1, false)[1] or "")
-			set_lines(title_buf, { (line:gsub("\n", "")) })
+			local lines = vim.api.nvim_buf_get_lines(title_buf, 0, -1, false)
+			if #lines > 1 then
+				local joined = table.concat(lines, " ")
+				set_lines(title_buf, { joined })
+				-- If in insert mode, put cursor at end of line to avoid jumping to start
+				if vim.api.nvim_get_mode().mode == "i" then
+					vim.api.nvim_win_set_cursor(0, { 1, #joined })
+				end
+			end
 		end,
 	})
 
