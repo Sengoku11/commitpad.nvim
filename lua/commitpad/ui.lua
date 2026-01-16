@@ -222,6 +222,9 @@ function M.open()
 	vim.bo[title_buf].filetype = "gitcommit"
 	prepare_spell(title_buf)
 
+	-- Without this, Neovim forces a gitcommit newline at char 73, which breaks the single-line layout.
+	vim.bo[title_buf].textwidth = 0
+
 	-- Body buffer: reuse if already exists with the same name, otherwise create+name it.
 	local existed_desc_buf = bufnr_by_name(draft_path) ~= nil
 	local desc_buf = bufnr_by_name(draft_path)
