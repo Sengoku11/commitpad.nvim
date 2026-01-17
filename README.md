@@ -10,18 +10,18 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 
 ## Features
 
-* **Markdown Buffer:** The input is a real buffer (`filetype=markdown`), enabling your formatters, linters, snippets, and LSP.
-* **Persistent & Isolated Drafts:** Drafts are stored in `$(git rev-parse --absolute-git-dir)/commitpad/draft.md`.
-    * **Clean Working Directory:** No `.gitmessage` clutter or `.gitignore` pollution.
-    * **Context Aware:** Drafts are isolated per worktree and persist across sessions.
-* **Visual Feedback:** Real-time title length indicators to assist with adherence to the 50/72 commit message convention.
+* Markdown Buffer: The input is a `filetype=markdown` buffer, enabling your formatters, linters, snippets, and LSP.
+* Persistent & Isolated Drafts: Stored in `.git/commitpad/draft.md`.
+    * No `.gitmessage` clutter or `.gitignore` pollution.
+    * Drafts are isolated per worktree and persist across sessions.
+* 50/72 Indicators: Real-time highlighting of title length to assist with the convention.
 
 ## Why CommitPad?
 
-* **Vs `fugitive`:** Preserves your window layout by using a floating overlay instead of disruptive splits.
-* **Vs `$EDITOR`:** Instantly summon and dismiss your draft with a dedicated toggle (`<leader>gc`).
-* **Vs `lazygit`:** Leverages your full Neovim setup (LSP, spell check), avoiding the overhead of a full TUI context switch.
-* **Vs `git commit -m`:** Supports iterative drafting and multiline formatting, rather than hasty one-liners.
+* Vs `fugitive`: Preserves your window layout by using a floating overlay instead of disruptive splits.
+* Vs `$EDITOR`: Instantly summon and dismiss your draft with a dedicated toggle (`<leader>gc`).
+* Vs `lazygit`: Leverages your full Neovim setup (LSP, spell check), avoiding the overhead of a TUI context switch.
+* Vs `git commit -m`: Enables iterative drafting and multiline formatting, rather than hasty one-liners.
 
 ## Installation 
 
