@@ -1,5 +1,9 @@
 local M = {}
 
+-- Structure: <type>[optional scope][optional !]: <description>
+local cc_regex =
+	vim.regex([[^\(feat\|fix\|docs\|style\|refactor\|perf\|test\|build\|ci\|chore\|revert\)\%(([^)]\+)\)\?!\?: .]])
+
 local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -256,10 +260,11 @@ function M.open()
 		bufnr = desc_buf,
 	})
 
-	-- Setup namespace for the char counter
+	-- Setup namespaces
 	local ns_id = vim.api.nvim_create_namespace("commitpad_counter")
+	local lint_ns = vim.api.nvim_create_namespace("commitpad_lint")
 
-	-- Combined logic: Enforce single-line title + Update Char Counter
+	-- Combined logic: Enforce single-line title + Update Char Counter + Lint
 	-- Triggers on every change to keep UI in sync
 	local function update_title()
 		if not vim.api.nvim_buf_is_valid(title_buf) then
@@ -280,8 +285,9 @@ function M.open()
 			lines = { joined }
 		end
 
-		-- 2. Char Counter logic
 		local line = lines[1] or ""
+
+		-- 2. Char Counter logic
 		local count = vim.fn.strchars(line)
 		local limit_soft = 50
 		local limit_hard = 72
@@ -299,6 +305,40 @@ function M.open()
 			virt_text_pos = "right_align",
 			hl_mode = "combine",
 		})
+
+		-- 3. Conventional Commit Lint
+		vim.api.nvim_buf_clear_namespace(title_buf, lint_ns, 0, -1)
+		if #line > 0 then
+			local is_valid = cc_regex:match_str(line)
+
+			if not is_valid then
+				-- Check if the first word is a valid type
+				local first_word = line:match("^(%w+)")
+				local valid_types = {
+					feat = 1,
+					fix = 1,
+					chore = 1,
+					docs = 1,
+					refactor = 1,
+					style = 1,
+					test = 1,
+					perf = 1,
+					ci = 1,
+					build = 1,
+					revert = 1,
+				}
+
+				local end_col = #line
+				if first_word and not valid_types[first_word] then
+					end_col = #first_word
+				end
+
+				vim.api.nvim_buf_set_extmark(title_buf, lint_ns, 0, 0, {
+					end_col = end_col,
+					hl_group = "DiagnosticUnderlineWarn",
+				})
+			end
+		end
 	end
 
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
