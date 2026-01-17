@@ -14,7 +14,9 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 * Persistent & Isolated Drafts: Stored in `.git/commitpad/draft.md`.
     * No `.gitmessage` clutter or `.gitignore` pollution.
     * Drafts are isolated per worktree and persist across sessions.
-* 50/72 Indicators: Real-time highlighting of title length to assist with the convention.
+* Visual Validation:
+    * Real-time highlighting of title length to assist with 50/72 rule.
+    * Flags non-conventional commit types (e.g., `doc:` vs `docs:`) and structural breaks in the `type[scope][!]: description` format.
 
 ## Why CommitPad?
 
