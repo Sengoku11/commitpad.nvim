@@ -218,11 +218,20 @@ function M.open()
 		pcall(vim.api.nvim_set_option_value, "spelloptions", vim.go.spelloptions, { buf = buf })
 	end
 
-	-- Title buffer is scratch and always created for the popup
-	local title_buf = vim.api.nvim_create_buf(false, true)
+	-- Title buffer: reuse if exists (for persistent undo), otherwise create.
+	local title_buf_name = draft_path .. ".title"
+	local title_buf = bufnr_by_name(title_buf_name)
+	local created_title_buf = false
+
+	if not title_buf then
+		title_buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_name(title_buf, title_buf_name)
+		created_title_buf = true
+	end
+
 	vim.bo[title_buf].buftype = "nofile"
 	vim.bo[title_buf].swapfile = false
-	vim.bo[title_buf].bufhidden = "wipe"
+	vim.bo[title_buf].bufhidden = "hide" -- PERSISTENT: hide instead of wipe
 	vim.bo[title_buf].filetype = "gitcommit"
 	prepare_spell(title_buf)
 
@@ -242,7 +251,7 @@ function M.open()
 
 	vim.bo[desc_buf].buftype = ""
 	vim.bo[desc_buf].swapfile = false
-	vim.bo[desc_buf].bufhidden = "hide" -- don't auto-wipe buffers you didn't create
+	vim.bo[desc_buf].bufhidden = "hide" -- PERSISTENT: hide instead of wipe
 	vim.bo[desc_buf].filetype = "markdown"
 	prepare_spell(desc_buf)
 
@@ -341,6 +350,7 @@ function M.open()
 		end
 	end
 
+	vim.api.nvim_clear_autocmds({ buffer = title_buf, event = { "TextChanged", "TextChangedI" } })
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
 		buffer = title_buf,
 		callback = update_title,
@@ -369,18 +379,6 @@ function M.open()
 
 	local function close()
 		layout:unmount()
-
-		-- Title buffer: always safe to delete (scratch)
-		if vim.api.nvim_buf_is_valid(title_buf) then
-			pcall(vim.api.nvim_buf_delete, title_buf, { force = true })
-		end
-
-		-- Body buffer: delete ONLY if we created it for this popup.
-		-- If the user already had it open elsewhere, don't touch it.
-		if created_desc_buf and vim.api.nvim_buf_is_valid(desc_buf) then
-			pcall(vim.api.nvim_buf_delete, desc_buf, { force = true })
-		end
-
 		-- jump back to where user was
 		restore_prev_window()
 	end
@@ -412,6 +410,9 @@ function M.open()
 			notify("Failed to write draft: " .. draft_path, vim.log.levels.ERROR)
 			return
 		end
+		-- Reset modified flags to avoid reloading from disk immediately if reopened
+		vim.bo[title_buf].modified = false
+		vim.bo[desc_buf].modified = false
 		close()
 		notify("Draft saved: " .. draft_path)
 	end
@@ -456,6 +457,10 @@ function M.open()
 			else
 				notify(string.format("Committed: %s", title))
 			end
+
+			-- Clear text (adds to undo stack) instead of wiping buffer (which deletes history)
+			set_lines(title_buf, { "" })
+			set_lines(desc_buf, { "" })
 		else
 			local err = (res and res.stderr and trim(res.stderr) ~= "" and res.stderr) or "Commit failed."
 			notify(err, vim.log.levels.ERROR)
@@ -479,19 +484,23 @@ function M.open()
 	local is_clean = true
 	if md and md ~= "" then
 		local t, d = parse_draft(md)
-		set_lines(title_buf, { t })
+		if created_title_buf or not vim.bo[title_buf].modified then
+			set_lines(title_buf, { t })
+		end
 		if not existed_desc_buf or not vim.bo[desc_buf].modified then
 			set_lines(desc_buf, d)
 		end
-		local title_empty = trim(t or "") == ""
-		is_clean = title_empty
 	else
-		set_lines(title_buf, { "" })
+		-- If file is missing (e.g., committed), but buffer has modified content in memory, keep it.
+		-- Only clear if it was a fresh creation or unmodified.
+		if created_title_buf then
+			set_lines(title_buf, { "" })
+		end
 		if not existed_desc_buf or not vim.bo[desc_buf].modified then
 			set_lines(desc_buf, { "" })
 		end
-		is_clean = true
 	end
+	is_clean = trim((buf_lines(title_buf)[1] or "")) == ""
 
 	title_popup.border:set_text(
 		"bottom",
