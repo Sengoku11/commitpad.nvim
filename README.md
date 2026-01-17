@@ -16,6 +16,13 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
     * **Context Aware:** Drafts are isolated per worktree and persist across sessions.
 * **Visual Feedback:** Real-time title length indicators to assist with adherence to the 50/72 commit message convention.
 
+## Why CommitPad?
+
+* **Vs `fugitive`:** Preserves your window layout by using a floating overlay instead of disruptive splits.
+* **Vs `$EDITOR`:** Instantly summon and dismiss your draft with a dedicated toggle (`<leader>gc`).
+* **Vs `lazygit`:** Leverages your full Neovim setup (LSP, spell check), avoiding the overhead of a full TUI context switch.
+* **Vs `git commit -m`:** Supports iterative drafting and multiline formatting, rather than hasty one-liners.
+
 ## Installation 
 
 **Lazy.nvim**
