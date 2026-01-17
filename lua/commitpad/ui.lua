@@ -167,7 +167,7 @@ local function parse_draft(md)
 end
 
 local function bufnr_by_name(name)
-	-- Use exact match loop to prevent substring matching (e.g. "draft.md" matching "draft.md.title")
+	-- Use exact match loop to prevent substring matching
 	for _, b in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_get_name(b) == name then
 			return b
@@ -385,6 +385,24 @@ function M.open()
 		restore_prev_window()
 	end
 
+	local function save_snapshot()
+		local title, desc = get_title_desc(title_buf, desc_buf)
+		-- If completely empty, delete file to keep dir clean
+		if title == "" and (#desc == 0 or (#desc == 1 and desc[1] == "")) then
+			delete_file(draft_path)
+		else
+			write_file(draft_path, serialize_draft(title, desc))
+		end
+		-- Reset modified flags so logic knows we are synced
+		vim.bo[title_buf].modified = false
+		vim.bo[desc_buf].modified = false
+	end
+
+	local function close_with_save()
+		save_snapshot()
+		close()
+	end
+
 	local function focus_title()
 		vim.api.nvim_set_current_win(title_popup.winid)
 	end
@@ -403,20 +421,6 @@ function M.open()
 		else
 			focus_title()
 		end
-	end
-
-	local function save_draft()
-		local title, desc = get_title_desc(title_buf, desc_buf)
-		local ok = write_file(draft_path, serialize_draft(title, desc))
-		if not ok then
-			notify("Failed to write draft: " .. draft_path, vim.log.levels.ERROR)
-			return
-		end
-		-- Reset modified flags to avoid reloading from disk immediately if reopened
-		vim.bo[title_buf].modified = false
-		vim.bo[desc_buf].modified = false
-		close()
-		notify("Draft saved: " .. draft_path)
 	end
 
 	local function clear_all()
@@ -452,7 +456,7 @@ function M.open()
 				end
 			end
 
-			close()
+			close() -- Just close, no need to save snapshot since we committed
 
 			if hash then
 				notify(string.format("Committed `%s`: %s", hash, title))
@@ -469,6 +473,13 @@ function M.open()
 			-- keep draft intact on failure
 		end
 	end
+
+	-- Autosave on exit
+	local group = vim.api.nvim_create_augroup("commitpad_autosave", { clear = true })
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		callback = save_snapshot,
+	})
 
 	layout:mount()
 
@@ -506,7 +517,7 @@ function M.open()
 
 	title_popup.border:set_text(
 		"bottom",
-		"  [Tab] switch  [Ctrl+S] draft  [Leader+Enter] commit  [Ctrl+L] clear  [q/Esc] close  ",
+		"  [Tab] switch  [Leader+Enter] commit  [Ctrl+L] clear  [q/Esc] save and close  ",
 		"center"
 	)
 
@@ -515,9 +526,8 @@ function M.open()
 	end
 
 	for _, b in ipairs({ title_buf, desc_buf }) do
-		map(b, "n", "q", close, "Close")
-		map(b, "n", "<Esc>", close, "Close")
-		map(b, { "n", "i" }, "<C-s>", save_draft, "Save draft")
+		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
+		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
 		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear")
 		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
