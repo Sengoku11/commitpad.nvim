@@ -10,17 +10,38 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 
 ## Features
 
-* **Full Editor Power:** The input field is a standard `markdown` buffer. Unlike the CLI, you get your **formatters, linters, spell checkers, and LSP completion** while you type.
-* **Title Length:** Displays the title length as you type, making it easy to adhere to the 50/72 rule.
-* **Worktree-Isolated Drafts:** Drafts are saved to `$(git rev-parse --absolute-git-dir)/commitpad/draft.md`. They persist between sessions, don't clutter your working directory (`git status` is clean), and handle `git worktree` contexts automatically.
-* **Simple Workflow:** Open the popup, write your message, then choose to **save** (draft), **clear**, or **commit**.
+* **Markdown Buffer:** The input is a real buffer (`filetype=markdown`), enabling your formatters, linters, snippets, and LSP.
+* **Persistent & Isolated Drafts:** Drafts are stored in `$(git rev-parse --absolute-git-dir)/commitpad/draft.md`.
+    * **Clean Working Directory:** No `.gitmessage` clutter or `.gitignore` pollution.
+    * **Context Aware:** Drafts are isolated per worktree and persist across sessions.
+* **Visual Feedback:** Real-time title length indicators to assist with adherence to the 50/72 commit message convention.
+
+## Installation 
+
+**Lazy.nvim**
+
+```lua
+{
+  "Sengoku11/commitpad.nvim",
+  dependencies = { "MunifTanjim/nui.nvim" },
+  cmd = { "CommitPad" },
+  keys = {
+    { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
+  },
+  opts = {}
+}
+```
 
 ## Requirements
 
 - Neovim **0.10+** (uses `vim.system`)
 - [`MunifTanjim/nui.nvim`](https://github.com/MunifTanjim/nui.nvim)
 
-## Recommended Settings
+## Recommended Configuration
+
+For the best experience writing prose in the popup, these settings are recommended.
+
+### Neovim Options
 
 ```lua
 -- Soft wrap lines at word boundaries, preserving indentation
@@ -34,18 +55,7 @@ vim.opt.spelllang = { 'en_us' }
 vim.opt.spelloptions = 'camel'
 ```
 
-## Installation (lazy.nvim)
+### Suggested Plugins
 
-```lua
-{
-  "Sengoku11/commitpad.nvim",
-  dependencies = { "MunifTanjim/nui.nvim" },
-  cmd = { "CommitPad" },
-  keys = {
-    { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
-  },
-  config = function()
-    require("commitpad").setup()
-  end,
-}
-
+* Grammar: [Harper-ls](https://writewithharper.com/docs/integrations/neovim)
+* Rendering: [MeanderingProgrammer/render-markdown.nvim](https://github.com/MeanderingProgrammer/render-markdown.nvim)
