@@ -167,9 +167,11 @@ local function parse_draft(md)
 end
 
 local function bufnr_by_name(name)
-	local b = vim.fn.bufnr(name, false)
-	if type(b) == "number" and b > 0 then
-		return b
+	-- Use exact match loop to prevent substring matching (e.g. "draft.md" matching "draft.md.title")
+	for _, b in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_get_name(b) == name then
+			return b
+		end
 	end
 	return nil
 end
