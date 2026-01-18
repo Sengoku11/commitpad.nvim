@@ -41,47 +41,19 @@ local function ensure_dir(path)
 	vim.fn.mkdir(path, "p")
 end
 
-local function read_file(path)
-	local f = io.open(path, "r")
-	if not f then
-		return nil
-	end
-	local s = f:read("*a")
-	f:close()
-	return s
-end
-
-local function write_file(path, s)
-	local f = io.open(path, "w")
-	if not f then
-		return false
-	end
-	f:write(s)
-	f:close()
-	return true
-end
-
-local function delete_file(path)
-	os.remove(path)
-end
-
-local function yaml_quote_single(s)
-	s = s or ""
-	return "'" .. s:gsub("'", "''") .. "'"
-end
-
-local function draft_path_for_worktree()
+-- Return distinct files for body and title to support native undo
+local function draft_paths_for_worktree()
 	local root = worktree_root()
 	if not root then
-		return nil, nil
+		return nil, nil, nil
 	end
 	local gitdir = worktree_gitdir(root)
 	if not gitdir then
-		return nil, nil
+		return nil, nil, nil
 	end
 	local dir = gitdir .. "/commitpad"
 	ensure_dir(dir)
-	return dir .. "/draft.md", root
+	return dir .. "/draft.md", dir .. "/draft.title", root
 end
 
 local function buf_lines(buf)
@@ -99,79 +71,6 @@ local function get_title_desc(title_buf, desc_buf)
 		table.remove(desc, #desc)
 	end
 	return title, desc
-end
-
-local function serialize_draft(title, desc_lines)
-	local t = {}
-	table.insert(t, "---")
-	table.insert(t, "title: " .. yaml_quote_single(title or ""))
-	table.insert(t, "---")
-	if desc_lines and #desc_lines > 0 then
-		for _, line in ipairs(desc_lines) do
-			table.insert(t, line)
-		end
-	end
-	return table.concat(t, "\n") .. "\n"
-end
-
-local function parse_draft(md)
-	if not md or md == "" then
-		return "", { "" }
-	end
-
-	local lines = {}
-	for line in md:gmatch("([^\n]*)\n?") do
-		table.insert(lines, line)
-	end
-	if #lines > 0 and lines[#lines] == "" then
-		table.remove(lines, #lines)
-	end
-
-	local title = ""
-	local body_start = 1
-
-	if lines[1] == "---" then
-		local fm_end = nil
-		for i = 2, #lines do
-			if lines[i] == "---" then
-				fm_end = i
-				break
-			end
-			local k, v = lines[i]:match("^([%w_%-]+)%s*:%s*(.*)$")
-			if k == "title" and v then
-				v = trim(v)
-				local sq = v:match("^'(.*)'$")
-				if sq ~= nil then
-					title = sq:gsub("''", "'")
-				else
-					title = v
-				end
-			end
-		end
-		if fm_end then
-			body_start = fm_end + 1
-			if lines[body_start] == "" then
-				body_start = body_start + 1
-			end
-		end
-	end
-
-	local desc = {}
-	for i = body_start, #lines do
-		table.insert(desc, lines[i])
-	end
-	if #desc == 0 then
-		desc = { "" }
-	end
-	return title, desc
-end
-
-local function bufnr_by_name(name)
-	local b = vim.fn.bufnr(name, false)
-	if type(b) == "number" and b > 0 then
-		return b
-	end
-	return nil
 end
 
 local function extract_commit_hash(stdout, stderr)
@@ -196,8 +95,8 @@ function M.open()
 	-- remember where user was, so closing returns there (not "first window")
 	local prev_win = vim.api.nvim_get_current_win()
 
-	local draft_path, root = draft_path_for_worktree()
-	if not draft_path or not root then
+	local body_path, title_path, root = draft_paths_for_worktree()
+	if not body_path or not root then
 		notify("Not inside a git worktree.", vim.log.levels.ERROR)
 		return
 	end
@@ -218,33 +117,23 @@ function M.open()
 		pcall(vim.api.nvim_set_option_value, "spelloptions", vim.go.spelloptions, { buf = buf })
 	end
 
-	-- Title buffer is scratch and always created for the popup
-	local title_buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[title_buf].buftype = "nofile"
-	vim.bo[title_buf].swapfile = false
-	vim.bo[title_buf].bufhidden = "wipe"
-	vim.bo[title_buf].filetype = "gitcommit"
-	prepare_spell(title_buf)
+	-- Use bufadd/bufload to attach buffers to specific files for persistent undo
+	local function load_file_buffer(path, ft)
+		local buf = vim.fn.bufadd(path)
+		vim.fn.bufload(buf)
+		vim.bo[buf].buftype = "" -- Must be empty (normal file) for undofile to work
+		vim.bo[buf].swapfile = false
+		vim.bo[buf].filetype = ft
+		vim.bo[buf].undofile = true
+		prepare_spell(buf)
+		return buf
+	end
 
+	local title_buf = load_file_buffer(title_path, "gitcommit")
 	-- Without this, Neovim forces a gitcommit newline at char 73, which breaks the single-line layout.
 	vim.bo[title_buf].textwidth = 0
 
-	-- Body buffer: reuse if already exists with the same name, otherwise create+name it.
-	local existed_desc_buf = bufnr_by_name(draft_path) ~= nil
-	local desc_buf = bufnr_by_name(draft_path)
-	local created_desc_buf = false
-
-	if not desc_buf then
-		desc_buf = vim.api.nvim_create_buf(false, false)
-		created_desc_buf = true
-		vim.api.nvim_buf_set_name(desc_buf, draft_path)
-	end
-
-	vim.bo[desc_buf].buftype = ""
-	vim.bo[desc_buf].swapfile = false
-	vim.bo[desc_buf].bufhidden = "hide" -- don't auto-wipe buffers you didn't create
-	vim.bo[desc_buf].filetype = "markdown"
-	prepare_spell(desc_buf)
+	local desc_buf = load_file_buffer(body_path, "markdown")
 
 	local title_popup = Popup({
 		border = { style = "rounded", text = { top = " Title", top_align = "left" } },
@@ -341,6 +230,7 @@ function M.open()
 		end
 	end
 
+	vim.api.nvim_clear_autocmds({ buffer = title_buf, event = { "TextChanged", "TextChangedI" } })
 	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
 		buffer = title_buf,
 		callback = update_title,
@@ -369,20 +259,23 @@ function M.open()
 
 	local function close()
 		layout:unmount()
-
-		-- Title buffer: always safe to delete (scratch)
-		if vim.api.nvim_buf_is_valid(title_buf) then
-			pcall(vim.api.nvim_buf_delete, title_buf, { force = true })
-		end
-
-		-- Body buffer: delete ONLY if we created it for this popup.
-		-- If the user already had it open elsewhere, don't touch it.
-		if created_desc_buf and vim.api.nvim_buf_is_valid(desc_buf) then
-			pcall(vim.api.nvim_buf_delete, desc_buf, { force = true })
-		end
-
 		-- jump back to where user was
 		restore_prev_window()
+	end
+
+	local function save_snapshot()
+		-- Simply trigger a save on the buffers. Neovim handles the file write and undo sync.
+		vim.api.nvim_buf_call(title_buf, function()
+			vim.cmd("silent! update")
+		end)
+		vim.api.nvim_buf_call(desc_buf, function()
+			vim.cmd("silent! update")
+		end)
+	end
+
+	local function close_with_save()
+		save_snapshot()
+		close()
 	end
 
 	local function focus_title()
@@ -405,22 +298,10 @@ function M.open()
 		end
 	end
 
-	local function save_draft()
-		local title, desc = get_title_desc(title_buf, desc_buf)
-		local ok = write_file(draft_path, serialize_draft(title, desc))
-		if not ok then
-			notify("Failed to write draft: " .. draft_path, vim.log.levels.ERROR)
-			return
-		end
-		close()
-		notify("Draft saved: " .. draft_path)
-	end
-
 	local function clear_all()
 		set_lines(title_buf, { "" })
 		set_lines(desc_buf, { "" })
-		delete_file(draft_path)
-		notify("Cleared (draft deleted).")
+		notify("Cleared.")
 	end
 
 	local function do_commit()
@@ -438,8 +319,6 @@ function M.open()
 
 		local _, res = git_out(args, root)
 		if res and res.code == 0 then
-			delete_file(draft_path)
-
 			-- best-effort: confirm hash (works even if git output parsing fails)
 			local hash = extract_commit_hash(res.stdout, res.stderr)
 			if not hash then
@@ -449,19 +328,31 @@ function M.open()
 				end
 			end
 
-			close()
-
 			if hash then
 				notify(string.format("Committed `%s`: %s", hash, title))
 			else
 				notify(string.format("Committed: %s", title))
 			end
+
+			-- Clear text and save immediately.
+			set_lines(title_buf, { "" })
+			set_lines(desc_buf, { "" })
+			save_snapshot()
+
+			close()
 		else
 			local err = (res and res.stderr and trim(res.stderr) ~= "" and res.stderr) or "Commit failed."
 			notify(err, vim.log.levels.ERROR)
 			-- keep draft intact on failure
 		end
 	end
+
+	-- Autosave on exit
+	local group = vim.api.nvim_create_augroup("commitpad_autosave", { clear = true })
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		callback = save_snapshot,
+	})
 
 	layout:mount()
 
@@ -473,29 +364,11 @@ function M.open()
 	apply_win_opts(title_popup.winid)
 	apply_win_opts(desc_popup.winid)
 
-	-- Load draft file into buffers.
-	-- If desc_buf existed before and is modified, don't clobber it.
-	local md = read_file(draft_path)
-	local is_clean = true
-	if md and md ~= "" then
-		local t, d = parse_draft(md)
-		set_lines(title_buf, { t })
-		if not existed_desc_buf or not vim.bo[desc_buf].modified then
-			set_lines(desc_buf, d)
-		end
-		local title_empty = trim(t or "") == ""
-		is_clean = title_empty
-	else
-		set_lines(title_buf, { "" })
-		if not existed_desc_buf or not vim.bo[desc_buf].modified then
-			set_lines(desc_buf, { "" })
-		end
-		is_clean = true
-	end
+	local is_clean = trim((buf_lines(title_buf)[1] or "")) == ""
 
 	title_popup.border:set_text(
 		"bottom",
-		"  [Tab] switch  [Ctrl+S] draft  [Leader+Enter] commit  [Ctrl+L] clear  [q/Esc] close  ",
+		"  [Tab] switch  [Leader+Enter] commit  [Ctrl+L] clear  [q/Esc] save and close  ",
 		"center"
 	)
 
@@ -504,9 +377,8 @@ function M.open()
 	end
 
 	for _, b in ipairs({ title_buf, desc_buf }) do
-		map(b, "n", "q", close, "Close")
-		map(b, "n", "<Esc>", close, "Close")
-		map(b, { "n", "i" }, "<C-s>", save_draft, "Save draft")
+		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
+		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
 		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear")
 		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
