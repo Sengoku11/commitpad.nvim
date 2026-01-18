@@ -1,5 +1,8 @@
 local M = {}
 
+-- State tracking
+M.instance = nil
+
 -- Structure: <type>[optional scope][optional !]: <description>
 local cc_regex =
 	vim.regex([[^\(feat\|fix\|docs\|style\|refactor\|perf\|test\|build\|ci\|chore\|revert\)\%(([^)]\+)\)\?!\?: .]])
@@ -89,6 +92,18 @@ local function extract_commit_hash(stdout, stderr)
 end
 
 function M.open()
+	-- Check validity of the window.
+	-- If the user closed the window manually (e.g. :q), M.instance is stale.
+	if M.instance and M.instance.title_popup and M.instance.title_popup.winid then
+		if vim.api.nvim_win_is_valid(M.instance.title_popup.winid) then
+			vim.api.nvim_set_current_win(M.instance.title_popup.winid)
+			return
+		else
+			-- State was stale, reset it and continue to open new window
+			M.instance = nil
+		end
+	end
+
 	local Popup = require("nui.popup")
 	local Layout = require("nui.layout")
 
@@ -251,6 +266,12 @@ function M.open()
 		}, { dir = "col" })
 	)
 
+	M.instance = {
+		layout = layout,
+		title_popup = title_popup,
+		desc_popup = desc_popup,
+	}
+
 	local function restore_prev_window()
 		if prev_win and vim.api.nvim_win_is_valid(prev_win) then
 			pcall(vim.api.nvim_set_current_win, prev_win)
@@ -258,7 +279,10 @@ function M.open()
 	end
 
 	local function close()
-		layout:unmount()
+		if M.instance then
+			M.instance.layout:unmount()
+			M.instance = nil
+		end
 		-- jump back to where user was
 		restore_prev_window()
 	end
@@ -279,11 +303,15 @@ function M.open()
 	end
 
 	local function focus_title()
-		vim.api.nvim_set_current_win(title_popup.winid)
+		if title_popup.winid and vim.api.nvim_win_is_valid(title_popup.winid) then
+			vim.api.nvim_set_current_win(title_popup.winid)
+		end
 	end
 
 	local function focus_desc()
-		vim.api.nvim_set_current_win(desc_popup.winid)
+		if desc_popup.winid and vim.api.nvim_win_is_valid(desc_popup.winid) then
+			vim.api.nvim_set_current_win(desc_popup.winid)
+		end
 	end
 
 	local function toggle_focus()
