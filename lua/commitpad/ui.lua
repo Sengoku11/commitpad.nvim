@@ -513,6 +513,7 @@ function M.open()
 	end
 
 	map(title_buf, "i", "<CR>", focus_desc, "Jump to body")
+	map(title_buf, "i", "<Tab>", focus_desc, "Jump to body")
 
 	update_title()
 
