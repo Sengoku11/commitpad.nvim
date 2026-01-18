@@ -512,8 +512,8 @@ function M.open()
 		nav_map(desc_buf, nil, focus_title)
 	end
 
-	map(title_buf, "i", "<CR>", focus_desc, "Jump to body")
-	map(title_buf, "i", "<Tab>", focus_desc, "Jump to body")
+	map(title_buf, "i", "<CR>", toggle_focus, "Jump to body")
+	map(title_buf, "i", "<Tab>", toggle_focus, "Jump to body")
 
 	update_title()
 
