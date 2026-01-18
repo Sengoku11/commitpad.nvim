@@ -37,7 +37,10 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
   keys = {
     { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
   },
-  opts = {}
+  opts = {
+    -- Defaults
+    footer = false, -- A dedicated buffer that provides a "sticky" area for repetitive tags
+  },
 }
 ```
 

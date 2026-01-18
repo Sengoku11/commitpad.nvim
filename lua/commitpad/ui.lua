@@ -1,5 +1,14 @@
 local M = {}
 
+-- Defaults
+M.config = {
+	footer = false,
+}
+
+function M.setup(opts)
+	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+end
+
 -- State tracking
 M.instance = nil
 
@@ -44,36 +53,54 @@ local function ensure_dir(path)
 	vim.fn.mkdir(path, "p")
 end
 
--- Return distinct files for body and title to support native undo
+-- Return distinct files for body, title, and footer
 local function draft_paths_for_worktree()
 	local root = worktree_root()
 	if not root then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
 	local gitdir = worktree_gitdir(root)
 	if not gitdir then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
 	local dir = gitdir .. "/commitpad"
 	ensure_dir(dir)
-	return dir .. "/draft.md", dir .. "/draft.title", root
+	return dir .. "/draft.md", dir .. "/draft.title", dir .. "/draft.footer", root
 end
 
 local function buf_lines(buf)
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return {}
+	end
 	return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 end
 
 local function set_lines(buf, lines)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	if buf and vim.api.nvim_buf_is_valid(buf) then
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	end
 end
 
-local function get_title_desc(title_buf, desc_buf)
+local function get_commit_content(title_buf, desc_buf, footer_buf)
 	local title = trim((buf_lines(title_buf)[1] or ""))
 	local desc = buf_lines(desc_buf)
 	while #desc > 0 and trim(desc[#desc]) == "" do
 		table.remove(desc, #desc)
 	end
-	return title, desc
+
+	local footer = {}
+	if footer_buf then
+		footer = buf_lines(footer_buf)
+		-- Remove leading/trailing empty lines from footer for cleaner append
+		while #footer > 0 and trim(footer[1]) == "" do
+			table.remove(footer, 1)
+		end
+		while #footer > 0 and trim(footer[#footer]) == "" do
+			table.remove(footer, #footer)
+		end
+	end
+
+	return title, desc, footer
 end
 
 local function extract_commit_hash(stdout, stderr)
@@ -110,7 +137,7 @@ function M.open()
 	-- remember where user was, so closing returns there (not "first window")
 	local prev_win = vim.api.nvim_get_current_win()
 
-	local body_path, title_path, root = draft_paths_for_worktree()
+	local body_path, title_path, footer_path, root = draft_paths_for_worktree()
 	if not body_path or not root then
 		notify("Not inside a git worktree.", vim.log.levels.ERROR)
 		return
@@ -150,6 +177,12 @@ function M.open()
 
 	local desc_buf = load_file_buffer(body_path, "markdown")
 
+	-- Footer buffer is only loaded if enabled
+	local footer_buf = nil
+	if M.config.footer then
+		footer_buf = load_file_buffer(footer_path, "markdown")
+	end
+
 	local title_popup = Popup({
 		border = { style = "rounded", text = { top = " Title", top_align = "left" } },
 		enter = true,
@@ -163,6 +196,16 @@ function M.open()
 		focusable = true,
 		bufnr = desc_buf,
 	})
+
+	local footer_popup = nil
+	if M.config.footer and footer_buf then
+		footer_popup = Popup({
+			border = { style = "rounded", text = { top = " Footer (Persistent)", top_align = "left" } },
+			enter = false,
+			focusable = true,
+			bufnr = footer_buf,
+		})
+	end
 
 	-- Setup namespaces
 	local ns_id = vim.api.nvim_create_namespace("commitpad_counter")
@@ -251,25 +294,29 @@ function M.open()
 		callback = update_title,
 	})
 
-	local layout = Layout(
-		{
-			relative = "editor",
-			position = "50%",
-			size = {
-				width = math.max(60, math.floor(vim.o.columns * 0.70)),
-				height = math.max(14, math.floor(vim.o.lines * 0.55)),
-			},
+	-- Construct layout boxes dynamically based on config
+	local layout_boxes = {
+		Layout.Box(title_popup, { size = 3 }),
+		Layout.Box(desc_popup, { grow = 1 }),
+	}
+	if M.config.footer and footer_popup then
+		table.insert(layout_boxes, Layout.Box(footer_popup, { size = "20%" }))
+	end
+
+	local layout = Layout({
+		relative = "editor",
+		position = "50%",
+		size = {
+			width = math.max(60, math.floor(vim.o.columns * 0.70)),
+			height = math.max(14, math.floor(vim.o.lines * 0.65)),
 		},
-		Layout.Box({
-			Layout.Box(title_popup, { size = 3 }),
-			Layout.Box(desc_popup, { grow = 1 }),
-		}, { dir = "col" })
-	)
+	}, Layout.Box(layout_boxes, { dir = "col" }))
 
 	M.instance = {
 		layout = layout,
 		title_popup = title_popup,
 		desc_popup = desc_popup,
+		footer_popup = footer_popup,
 	}
 
 	local function restore_prev_window()
@@ -295,6 +342,11 @@ function M.open()
 		vim.api.nvim_buf_call(desc_buf, function()
 			vim.cmd("silent! update")
 		end)
+		if footer_buf then
+			vim.api.nvim_buf_call(footer_buf, function()
+				vim.cmd("silent! update")
+			end)
+		end
 	end
 
 	local function close_with_save()
@@ -314,6 +366,12 @@ function M.open()
 		end
 	end
 
+	local function focus_footer()
+		if footer_popup and footer_popup.winid and vim.api.nvim_win_is_valid(footer_popup.winid) then
+			vim.api.nvim_set_current_win(footer_popup.winid)
+		end
+	end
+
 	local function toggle_focus()
 		-- ensure we end up in Normal mode even if Tab is pressed from Insert
 		vim.cmd("stopinsert")
@@ -321,6 +379,12 @@ function M.open()
 		local cur = vim.api.nvim_get_current_win()
 		if cur == title_popup.winid then
 			focus_desc()
+		elseif cur == desc_popup.winid then
+			if M.config.footer and footer_popup then
+				focus_footer()
+			else
+				focus_title()
+			end
 		else
 			focus_title()
 		end
@@ -329,20 +393,27 @@ function M.open()
 	local function clear_all()
 		set_lines(title_buf, { "" })
 		set_lines(desc_buf, { "" })
-		notify("Cleared.")
+		-- Explicitly NOT clearing footer_buf
+		notify("Cleared Title and Body (Footer preserved).")
 	end
 
 	local function do_commit()
-		local title, desc = get_title_desc(title_buf, desc_buf)
+		local title, desc, footer = get_commit_content(title_buf, desc_buf, footer_buf)
 		if title == "" then
 			notify("Title is empty (first -m).", vim.log.levels.WARN)
 			return
 		end
 
 		local args = { "git", "commit", "-m", title }
+
 		if #desc > 0 then
 			table.insert(args, "-m")
 			table.insert(args, table.concat(desc, "\n"))
+		end
+
+		if #footer > 0 then
+			table.insert(args, "-m")
+			table.insert(args, table.concat(footer, "\n"))
 		end
 
 		local _, res = git_out(args, root)
@@ -365,6 +436,7 @@ function M.open()
 			-- Clear text and save immediately.
 			set_lines(title_buf, { "" })
 			set_lines(desc_buf, { "" })
+			-- Footer is preserved intentionally
 			save_snapshot()
 
 			close()
@@ -391,6 +463,9 @@ function M.open()
 
 	apply_win_opts(title_popup.winid)
 	apply_win_opts(desc_popup.winid)
+	if footer_popup then
+		apply_win_opts(footer_popup.winid)
+	end
 
 	local is_clean = trim((buf_lines(title_buf)[1] or "")) == ""
 
@@ -404,15 +479,37 @@ function M.open()
 		vim.keymap.set(modes, lhs, rhs, { buffer = buf, silent = true, nowait = true, desc = desc })
 	end
 
-	for _, b in ipairs({ title_buf, desc_buf }) do
+	-- Apply shared mappings to all active buffers
+	local active_buffers = { title_buf, desc_buf }
+	if footer_buf then
+		table.insert(active_buffers, footer_buf)
+	end
+
+	for _, b in ipairs(active_buffers) do
 		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
 		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
-		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear")
+		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
 		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
-		map(b, { "n", "i" }, "<C-j>", focus_desc, "Focus body")
-		map(b, { "n", "i" }, "<C-k>", focus_title, "Focus title")
+	end
+
+	-- Specific navigation
+	local nav_map = function(buf, down_func, up_func)
+		if down_func then
+			map(buf, { "n", "i" }, "<C-j>", down_func, "Focus Down")
+		end
+		if up_func then
+			map(buf, { "n", "i" }, "<C-k>", up_func, "Focus Up")
+		end
+	end
+
+	nav_map(title_buf, focus_desc, nil)
+	if M.config.footer and footer_popup then
+		nav_map(desc_buf, focus_footer, focus_title)
+		nav_map(footer_buf, nil, focus_desc)
+	else
+		nav_map(desc_buf, nil, focus_title)
 	end
 
 	map(title_buf, "i", "<CR>", focus_desc, "Jump to body")
