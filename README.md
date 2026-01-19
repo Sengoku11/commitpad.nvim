@@ -36,6 +36,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
   cmd = { "CommitPad" },
   keys = {
     { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
+    { '<leader>gac', '<cmd>CommitPadAmend<cr>', desc = 'CommitPadAmend' },
   },
   opts = {
     -- Defaults

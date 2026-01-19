@@ -1,10 +1,24 @@
+---@class CommitPadUI
+---@field config CommitPadOptions
+---@field setup fun(opts?: CommitPadOptions)
+---@field open fun(opts?: CommitPadOpenOpts)
+---@field amend fun()
 local M = {}
+
+---@class CommitPadOptions
+---@field footer? boolean Show the footer buffer (default: false)
+---@field command? string Command name (default: "CommitPad")
+---@field amend_command? string Amend command name (default: "CommitPadAmend")
 
 -- Defaults
 M.config = {
 	footer = false,
 }
+---@class CommitPadOpenOpts
+---@field amend? boolean Whether to open in amend mode
 
+--- Setup the UI configuration
+---@param opts? CommitPadOptions
 function M.setup(opts)
 	M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
@@ -33,7 +47,7 @@ local function git_out(args, cwd)
 end
 
 local function worktree_root()
-	local cwd = vim.loop.cwd()
+	local cwd = vim.uv.cwd()
 	local out = git_out({ "git", "rev-parse", "--show-toplevel" }, cwd)
 	if not out or out == "" then
 		return nil
@@ -54,7 +68,7 @@ local function ensure_dir(path)
 end
 
 -- Return distinct files for body, title, and footer
-local function draft_paths_for_worktree()
+local function draft_paths_for_worktree(is_amend)
 	local root = worktree_root()
 	if not root then
 		return nil, nil, nil, nil
@@ -65,7 +79,9 @@ local function draft_paths_for_worktree()
 	end
 	local dir = gitdir .. "/commitpad"
 	ensure_dir(dir)
-	return dir .. "/draft.md", dir .. "/draft.title", dir .. "/draft.footer", root
+
+	local prefix = is_amend and "amend" or "draft"
+	return dir .. "/" .. prefix .. ".md", dir .. "/" .. prefix .. ".title", dir .. "/" .. prefix .. ".footer", root
 end
 
 local function buf_lines(buf)
@@ -118,7 +134,15 @@ local function extract_commit_hash(stdout, stderr)
 	return nil
 end
 
-function M.open()
+function M.amend()
+	M.open({ amend = true })
+end
+
+---@param opts? CommitPadOpenOpts
+function M.open(opts)
+	opts = opts or {}
+	local is_amend = opts.amend or false
+
 	-- Check validity of the window.
 	-- If the user closed the window manually (e.g. :q), M.instance is stale.
 	if M.instance and M.instance.title_popup and M.instance.title_popup.winid then
@@ -137,7 +161,7 @@ function M.open()
 	-- remember where user was, so closing returns there (not "first window")
 	local prev_win = vim.api.nvim_get_current_win()
 
-	local body_path, title_path, footer_path, root = draft_paths_for_worktree()
+	local body_path, title_path, footer_path, root = draft_paths_for_worktree(is_amend)
 	if not body_path or not root then
 		notify("Not inside a git worktree.", vim.log.levels.ERROR)
 		return
@@ -163,6 +187,10 @@ function M.open()
 	local function load_file_buffer(path, ft)
 		local buf = vim.fn.bufadd(path)
 		vim.fn.bufload(buf)
+		-- Sync with disk to ensure is_empty checks are accurate
+		vim.api.nvim_buf_call(buf, function()
+			vim.cmd("checktime")
+		end)
 		vim.bo[buf].buftype = "" -- Must be empty (normal file) for undofile to work
 		vim.bo[buf].swapfile = false
 		vim.bo[buf].filetype = ft
@@ -183,8 +211,44 @@ function M.open()
 		footer_buf = load_file_buffer(footer_path, "markdown")
 	end
 
+	local function load_head_to_buffers()
+		local out, r = git_out({ "git", "log", "-1", "--pretty=%B" }, root)
+		if not out or r.code ~= 0 then
+			return
+		end
+
+		local lines = vim.split(out, "\n")
+		local title = table.remove(lines, 1) or ""
+		while #lines > 0 and trim(lines[1]) == "" do
+			table.remove(lines, 1)
+		end
+		set_lines(title_buf, { title })
+		set_lines(desc_buf, lines)
+	end
+
+	-- If amend buffers are effectively empty (whitespace only), pull HEAD
+	if is_amend then
+		local t_lines = buf_lines(title_buf)
+		local d_lines = buf_lines(desc_buf)
+
+		-- Helper to check if buffer content is effectively empty
+		local function is_buf_empty(lines)
+			return trim(table.concat(lines, "")) == ""
+		end
+
+		if is_buf_empty(t_lines) and is_buf_empty(d_lines) then
+			load_head_to_buffers()
+			vim.cmd("silent! wall") -- Save immediately
+		end
+	end
+
+	local border_top = " Title"
+	if is_amend then
+		border_top = " Title [Amend] "
+	end
+
 	local title_popup = Popup({
-		border = { style = "rounded", text = { top = " Title", top_align = "left" } },
+		border = { style = "rounded", text = { top = border_top, top_align = "left" } },
 		enter = true,
 		focusable = true,
 		bufnr = title_buf,
@@ -336,15 +400,16 @@ function M.open()
 
 	local function save_snapshot()
 		-- Simply trigger a save on the buffers. Neovim handles the file write and undo sync.
+		-- Using 'write' instead of 'update' ensures disk state is synced even if modified flag is stale.
 		vim.api.nvim_buf_call(title_buf, function()
-			vim.cmd("silent! update")
+			vim.cmd("silent! write")
 		end)
 		vim.api.nvim_buf_call(desc_buf, function()
-			vim.cmd("silent! update")
+			vim.cmd("silent! write")
 		end)
 		if footer_buf then
 			vim.api.nvim_buf_call(footer_buf, function()
-				vim.cmd("silent! update")
+				vim.cmd("silent! write")
 			end)
 		end
 	end
@@ -397,6 +462,11 @@ function M.open()
 		notify("Cleared Title and Body (Footer preserved).")
 	end
 
+	local function do_reset_amend()
+		load_head_to_buffers()
+		notify("Reset to HEAD.")
+	end
+
 	local function do_commit()
 		local title, desc, footer = get_commit_content(title_buf, desc_buf, footer_buf)
 		if title == "" then
@@ -404,7 +474,13 @@ function M.open()
 			return
 		end
 
-		local args = { "git", "commit", "-m", title }
+		local args = { "git", "commit" }
+		if is_amend then
+			table.insert(args, "--amend")
+		end
+
+		table.insert(args, "-m")
+		table.insert(args, title)
 
 		if #desc > 0 then
 			table.insert(args, "-m")
@@ -469,9 +545,12 @@ function M.open()
 
 	local is_clean = trim((buf_lines(title_buf)[1] or "")) == ""
 
+	local hint_l = is_amend and "reset" or "clear"
+	local hint_cr = is_amend and "amend" or "commit"
+
 	title_popup.border:set_text(
 		"bottom",
-		"  [Tab] switch  [Leader+Enter] commit  [Ctrl+L] clear  [q/Esc] save and close  ",
+		string.format("  [Tab] switch  [Leader+Enter] %s  [Ctrl+L] %s  [q/Esc] save and close  ", hint_cr, hint_l),
 		"center"
 	)
 
@@ -488,7 +567,11 @@ function M.open()
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
 		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
-		map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
+		if is_amend then
+			map(b, { "n", "i" }, "<C-l>", do_reset_amend, "Reset to HEAD")
+		else
+			map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
+		end
 		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
