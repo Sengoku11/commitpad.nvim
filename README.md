@@ -36,11 +36,12 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
   cmd = { "CommitPad" },
   keys = {
     { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
-    { '<leader>gac', '<cmd>CommitPadAmend<cr>', desc = 'CommitPadAmend' },
+    { "<leader>gac", "<cmd>CommitPadAmend<cr>", desc = "CommitPadAmend" },
   },
   opts = {
     -- Defaults
     footer = false, -- A dedicated buffer that provides a "sticky" area for repetitive tags
+    stage_files = true, -- Display staged files in UI
   },
 }
 ```
@@ -64,8 +65,8 @@ vim.opt.linebreak = true -- Wrap at words, not arbitrary characters
 
 -- Builtin spell check
 vim.opt.spell = true
-vim.opt.spelllang = { 'en_us' }
-vim.opt.spelloptions = 'camel'
+vim.opt.spelllang = { "en_us" }
+vim.opt.spelloptions = "camel"
 ```
 
 ### Suggested Plugins

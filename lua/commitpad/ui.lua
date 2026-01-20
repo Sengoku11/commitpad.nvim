@@ -7,13 +7,16 @@ local M = {}
 
 ---@class CommitPadOptions
 ---@field footer? boolean Show the footer buffer (default: false)
+---@field stage_files? boolean Show staged files sidebar (default: false)
 ---@field command? string Command name (default: "CommitPad")
 ---@field amend_command? string Amend command name (default: "CommitPadAmend")
 
 -- Defaults
 M.config = {
 	footer = false,
+	stage_files = false,
 }
+
 ---@class CommitPadOpenOpts
 ---@field amend? boolean Whether to open in amend mode
 
@@ -61,6 +64,25 @@ local function worktree_gitdir(root)
 		return nil
 	end
 	return out
+end
+
+-- Get status tags (M/A/D/R) for staged buffer
+local function get_staged_files(root)
+	local out, _ = git_out({ "git", "diff", "--name-status", "--cached" }, root)
+	if not out or out == "" then
+		return {}
+	end
+
+	-- Parse "M path" into objects
+	local results = {}
+	for _, line in ipairs(vim.split(out, "\n")) do
+		local status, path = line:match("^(%S+)%s+(.*)$")
+		if status and path then
+			-- Handle rename "R100" -> "R"
+			table.insert(results, { status = status:sub(1, 1), path = path })
+		end
+	end
+	return results
 end
 
 local function ensure_dir(path)
@@ -271,6 +293,83 @@ function M.open(opts)
 		})
 	end
 
+	-- Calculate total dimensions early for percentage math
+	local total_width = math.max(60, math.floor(vim.o.columns * 0.70))
+	local total_height = math.max(14, math.floor(vim.o.lines * 0.65))
+
+	local staged_popup = nil
+	if M.config.stage_files then
+		local staged_files = get_staged_files(root)
+
+		-- Smart path formatting (Start truncation + Smart folding)
+		local formatted_lines = {}
+		local by_name = {}
+
+		-- Group by filename to detect collisions
+		for _, f in ipairs(staged_files) do
+			local name = vim.fn.fnamemodify(f.path, ":t")
+			by_name[name] = by_name[name] or {}
+			table.insert(by_name[name], f)
+		end
+
+		local staged_box_width = math.floor(total_width * 0.3)
+		-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
+		local max_len = math.max(5, staged_box_width - 5)
+
+		for _, f in ipairs(staged_files) do
+			local name = vim.fn.fnamemodify(f.path, ":t")
+			local path_text = name
+
+			-- If collision exists, show full path (simplest "smart fold")
+			if #by_name[name] > 1 then
+				path_text = f.path
+			end
+
+			-- Truncate path if too long
+			if vim.fn.strchars(path_text) > max_len then
+				local parts = vim.split(path_text, "/")
+				-- Only attempt to shorten if we actually have directories to strip
+				if #parts > 1 then
+					local built = parts[#parts] -- Always preserve the filename
+
+					-- Try to add parents from right-to-left
+					for i = #parts - 1, 1, -1 do
+						local candidate = parts[i] .. "/" .. built
+						-- Check if adding this parent keeps us under width (inc. "…/")
+						if vim.fn.strchars("…/" .. candidate) <= max_len then
+							built = candidate
+						else
+							break
+						end
+					end
+
+					-- Apply the shortening with ellipsis
+					path_text = "…/" .. built
+				end
+				-- If it was just a long filename (#parts == 1), we do nothing
+				-- and let it overflow naturally.
+			end
+
+			table.insert(formatted_lines, string.format("%s: %s", f.status, path_text))
+		end
+
+		local staged_buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(staged_buf, 0, -1, false, formatted_lines)
+		vim.bo[staged_buf].filetype = "text"
+		vim.bo[staged_buf].modifiable = false
+
+		staged_popup = Popup({
+			border = { style = "rounded", text = { top = " Staged ", top_align = "left" } },
+			enter = false,
+			focusable = true, -- Must be focusable for scrolling/navigation
+			bufnr = staged_buf,
+			win_options = {
+				winhighlight = "Normal:Comment,FloatBorder:Comment,FloatTitle:Comment",
+				wrap = false, -- Enable horizontal scroll by disabling wrap
+			},
+		})
+	end
+
 	-- Setup namespaces
 	local ns_id = vim.api.nvim_create_namespace("commitpad_counter")
 	local lint_ns = vim.api.nvim_create_namespace("commitpad_lint")
@@ -367,20 +466,31 @@ function M.open(opts)
 		table.insert(layout_boxes, Layout.Box(footer_popup, { size = "20%" }))
 	end
 
+	local main_box = nil
+	if staged_popup then
+		main_box = Layout.Box({
+			Layout.Box(layout_boxes, { dir = "col", grow = 1 }),
+			Layout.Box(staged_popup, { size = "30%" }),
+		}, { dir = "row" })
+	else
+		main_box = Layout.Box(layout_boxes, { dir = "col" })
+	end
+
 	local layout = Layout({
 		relative = "editor",
 		position = "50%",
 		size = {
-			width = math.max(60, math.floor(vim.o.columns * 0.70)),
-			height = math.max(14, math.floor(vim.o.lines * 0.65)),
+			width = total_width,
+			height = total_height,
 		},
-	}, Layout.Box(layout_boxes, { dir = "col" }))
+	}, main_box)
 
 	M.instance = {
 		layout = layout,
 		title_popup = title_popup,
 		desc_popup = desc_popup,
 		footer_popup = footer_popup,
+		staged_popup = staged_popup,
 	}
 
 	local function restore_prev_window()
@@ -437,6 +547,12 @@ function M.open(opts)
 		end
 	end
 
+	local function focus_staged()
+		if staged_popup and staged_popup.winid and vim.api.nvim_win_is_valid(staged_popup.winid) then
+			vim.api.nvim_set_current_win(staged_popup.winid)
+		end
+	end
+
 	local function toggle_focus()
 		-- ensure we end up in Normal mode even if Tab is pressed from Insert
 		vim.cmd("stopinsert")
@@ -447,12 +563,32 @@ function M.open(opts)
 		elseif cur == desc_popup.winid then
 			if M.config.footer and footer_popup then
 				focus_footer()
+			elseif staged_popup then
+				focus_staged()
 			else
 				focus_title()
 			end
+		elseif footer_popup and cur == footer_popup.winid then
+			if staged_popup then
+				focus_staged()
+			else
+				focus_title()
+			end
+		elseif staged_popup and cur == staged_popup.winid then
+			focus_title()
 		else
 			focus_title()
 		end
+	end
+
+	-- Helpers for cross-pane navigation
+	local function jump_to_staged()
+		vim.cmd("stopinsert")
+		focus_staged()
+	end
+
+	local function jump_from_staged()
+		focus_title()
 	end
 
 	local function clear_all()
@@ -542,6 +678,17 @@ function M.open(opts)
 	if footer_popup then
 		apply_win_opts(footer_popup.winid)
 	end
+	if staged_popup then
+		-- Apply syntax highlighting explicitly after mount
+		if vim.api.nvim_win_is_valid(staged_popup.winid) then
+			vim.api.nvim_win_call(staged_popup.winid, function()
+				vim.fn.matchadd("String", "^A:") -- Green (Added)
+				vim.fn.matchadd("Function", "^M:") -- Blue (Modified)
+				vim.fn.matchadd("ErrorMsg", "^D:") -- Red (Deleted)
+				vim.fn.matchadd("WarningMsg", "^R:") -- Orange (Renamed)
+			end)
+		end
+	end
 
 	local is_clean = trim((buf_lines(title_buf)[1] or "")) == ""
 
@@ -575,6 +722,19 @@ function M.open(opts)
 		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
+
+		-- New: Jump to the Staged box
+		if staged_popup then
+			map(b, { "n", "i" }, "<C-l>", jump_to_staged, "Jump to Staged")
+		end
+	end
+
+	-- New: Mappings for Staged Popup
+	if staged_popup then
+		map(staged_popup.bufnr, "n", "q", close_with_save, "Close")
+		map(staged_popup.bufnr, "n", "<Esc>", close_with_save, "Close")
+		map(staged_popup.bufnr, "n", "<C-h>", jump_from_staged, "Jump to Input")
+		map(staged_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
 	end
 
 	-- Specific navigation
