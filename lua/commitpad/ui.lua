@@ -714,26 +714,33 @@ function M.open(opts)
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
 		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
+
+		-- Prevents jump out of the CommitPad popup
+		map(b, "n", "<C-w><C-l>", close_with_save, "Close (Auto-Save)")
+		map(b, "n", "<C-w><C-h>", close_with_save, "Close (Auto-Save)")
+
 		if is_amend then
 			map(b, { "n", "i" }, "<C-l>", do_reset_amend, "Reset to HEAD")
 		else
 			map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
 		end
-		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 
+		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
 
-		-- New: Jump to the Staged box
 		if staged_popup then
-			map(b, { "n", "i" }, "<C-l>", jump_to_staged, "Jump to Staged")
+			-- Jump to the Staged box
+			map(b, { "n" }, "<leader>l", jump_to_staged, "Jump to Staged")
+			map(b, { "n" }, "]]", jump_to_staged, "Jump to Staged")
 		end
 	end
 
-	-- New: Mappings for Staged Popup
+	-- Mappings for Staged Popup
 	if staged_popup then
 		map(staged_popup.bufnr, "n", "q", close_with_save, "Close")
 		map(staged_popup.bufnr, "n", "<Esc>", close_with_save, "Close")
-		map(staged_popup.bufnr, "n", "<C-h>", jump_from_staged, "Jump to Input")
+		map(staged_popup.bufnr, "n", "<leader>h", jump_from_staged, "Jump to Input")
+		map(staged_popup.bufnr, "n", "[[", jump_from_staged, "Jump to Input")
 		map(staged_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
 	end
 
