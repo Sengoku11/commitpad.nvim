@@ -595,8 +595,78 @@ function M.open(opts)
 		nav_map(desc_buf, nil, focus_title)
 	end
 
+	-- QoL j/k navigation (conditional buffer jumping)
+	local function smart_j()
+		local cur = vim.api.nvim_get_current_buf()
+		local line = vim.api.nvim_win_get_cursor(0)[1]
+		local count = vim.api.nvim_buf_line_count(cur)
+
+		if cur == title_buf then
+			focus_desc()
+			vim.cmd("normal! gg")
+		elseif cur == desc_buf then
+			if line == count then
+				if footer_popup then
+					focus_footer()
+				else
+					focus_title()
+				end
+				vim.cmd("normal! gg")
+			else
+				vim.cmd("normal! j")
+			end
+		elseif footer_popup and cur == footer_buf then
+			if line == count then
+				focus_title()
+				vim.cmd("normal! gg")
+			else
+				vim.cmd("normal! j")
+			end
+		end
+	end
+
+	local function smart_k()
+		local cur = vim.api.nvim_get_current_buf()
+		local line = vim.api.nvim_win_get_cursor(0)[1]
+
+		if cur == title_buf then
+			if footer_popup then
+				focus_footer()
+			else
+				focus_desc()
+			end
+			vim.cmd("normal! G")
+		elseif cur == desc_buf then
+			if line == 1 then
+				focus_title()
+				-- Title is always 1 line, no need to move cursor
+			else
+				vim.cmd("normal! k")
+			end
+		elseif footer_popup and cur == footer_buf then
+			if line == 1 then
+				focus_desc()
+				vim.cmd("normal! G")
+			else
+				vim.cmd("normal! k")
+			end
+		end
+	end
+
+	-- Apply smart navigation to all buffers
+	for _, b in ipairs(active_buffers) do
+		map(b, "n", "j", smart_j, "Smart Down")
+		map(b, "n", "k", smart_k, "Smart Up")
+	end
+
+	-- QoL navigation using the fact that Title is always one-liner.
 	map(title_buf, "i", "<CR>", toggle_focus, "Jump to body")
 	map(title_buf, "i", "<Tab>", toggle_focus, "Jump to body")
+	map(title_buf, "i", "<Down>", toggle_focus, "Jump to body")
+	map(title_buf, "i", "<C-j>", toggle_focus, "Jump to body")
+	map(title_buf, "n", "o", toggle_focus, "Jump to body")
+	map(title_buf, "n", "O", toggle_focus, "Jump to body")
+	map(title_buf, "n", "<Down>", toggle_focus, "Jump to body")
 
 	update_title()
 
