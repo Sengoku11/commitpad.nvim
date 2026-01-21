@@ -66,23 +66,44 @@ local function worktree_gitdir(root)
 	return out
 end
 
--- Get status tags (M/A/D/R) for staged buffer
-local function get_staged_files(root)
-	local out, _ = git_out({ "git", "diff", "--name-status", "--cached" }, root)
+-- Get status lists for staged and unstaged
+local function get_status_files(root)
+	local out, _ = git_out({ "git", "status", "--porcelain", "-u" }, root)
 	if not out or out == "" then
-		return {}
+		return {}, {}
 	end
 
-	-- Parse "M path" into objects
-	local results = {}
+	local staged = {}
+	local unstaged = {}
+
 	for _, line in ipairs(vim.split(out, "\n")) do
-		local status, path = line:match("^(%S+)%s+(.*)$")
-		if status and path then
-			-- Handle rename "R100" -> "R"
-			table.insert(results, { status = status:sub(1, 1), path = path })
+		if #line > 3 then
+			local x = line:sub(1, 1)
+			local y = line:sub(2, 2)
+			local path = line:sub(4)
+
+			-- Handle rename output "R  from -> to"
+			local arrow = path:find(" -> ", 1, true)
+			if arrow then
+				path = path:sub(arrow + 4)
+			end
+			-- Remove quotes if git output added them
+			path = path:gsub('^"', ""):gsub('"$', "")
+
+			if x ~= " " and x ~= "?" then
+				table.insert(staged, { status = x, path = path })
+			end
+			-- y ~= " " covers modified worktree
+			-- x == "?" and y == "?" covers untracked
+			if y ~= " " or (x == "?" and y == "?") then
+				local s = (x == "?" and y == "?") and "?" or y
+				if s ~= " " then
+					table.insert(unstaged, { status = s, path = path })
+				end
+			end
 		end
 	end
-	return results
+	return staged, unstaged
 end
 
 local function ensure_dir(path)
@@ -299,58 +320,68 @@ function M.open(opts)
 
 	local staged_popup = nil
 	if M.config.stage_files then
-		local staged_files = get_staged_files(root)
+		local staged_list, unstaged_list = get_status_files(root)
 
 		-- Smart path formatting (Start truncation + Smart folding)
 		local formatted_lines = {}
 		local by_name = {}
 
-		-- Group by filename to detect collisions
-		for _, f in ipairs(staged_files) do
-			local name = vim.fn.fnamemodify(f.path, ":t")
-			by_name[name] = by_name[name] or {}
-			table.insert(by_name[name], f)
+		-- Build map for collision detection across both lists
+		local function map_files(list)
+			for _, f in ipairs(list) do
+				local name = vim.fn.fnamemodify(f.path, ":t")
+				by_name[name] = by_name[name] or {}
+				table.insert(by_name[name], f)
+			end
 		end
+		map_files(staged_list)
+		map_files(unstaged_list)
 
 		local staged_box_width = math.floor(total_width * 0.3)
 		-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
 		local max_len = math.max(5, staged_box_width - 5)
 
-		for _, f in ipairs(staged_files) do
-			local name = vim.fn.fnamemodify(f.path, ":t")
-			local path_text = name
+		local function format_and_append(list)
+			for _, f in ipairs(list) do
+				local name = vim.fn.fnamemodify(f.path, ":t")
+				local path_text = name
 
-			-- If collision exists, show full path (simplest "smart fold")
-			if #by_name[name] > 1 then
-				path_text = f.path
-			end
-
-			-- Truncate path if too long
-			if vim.fn.strchars(path_text) > max_len then
-				local parts = vim.split(path_text, "/")
-				-- Only attempt to shorten if we actually have directories to strip
-				if #parts > 1 then
-					local built = parts[#parts] -- Always preserve the filename
-
-					-- Try to add parents from right-to-left
-					for i = #parts - 1, 1, -1 do
-						local candidate = parts[i] .. "/" .. built
-						-- Check if adding this parent keeps us under width (inc. "…/")
-						if vim.fn.strchars("…/" .. candidate) <= max_len then
-							built = candidate
-						else
-							break
-						end
-					end
-
-					-- Apply the shortening with ellipsis
-					path_text = "…/" .. built
+				-- If collision exists, show full path (simplest "smart fold")
+				if #by_name[name] > 1 then
+					path_text = f.path
 				end
-				-- If it was just a long filename (#parts == 1), we do nothing
-				-- and let it overflow naturally.
-			end
 
-			table.insert(formatted_lines, string.format("%s: %s", f.status, path_text))
+				-- Truncate path if too long
+				if vim.fn.strchars(path_text) > max_len then
+					local parts = vim.split(path_text, "/")
+					if #parts > 1 then
+						local built = parts[#parts]
+						for i = #parts - 1, 1, -1 do
+							local candidate = parts[i] .. "/" .. built
+							if vim.fn.strchars("…/" .. candidate) <= max_len then
+								built = candidate
+							else
+								break
+							end
+						end
+						path_text = "…/" .. built
+					end
+				end
+				table.insert(formatted_lines, string.format("%s: %s", f.status, path_text))
+			end
+		end
+
+		if #staged_list > 0 then
+			table.insert(formatted_lines, "Staged:")
+			format_and_append(staged_list)
+		end
+
+		if #unstaged_list > 0 then
+			if #formatted_lines > 0 then
+				table.insert(formatted_lines, "")
+			end
+			table.insert(formatted_lines, "Unstaged:")
+			format_and_append(unstaged_list)
 		end
 
 		local staged_buf = vim.api.nvim_create_buf(false, true)
@@ -359,7 +390,7 @@ function M.open(opts)
 		vim.bo[staged_buf].modifiable = false
 
 		staged_popup = Popup({
-			border = { style = "rounded", text = { top = " Staged ", top_align = "left" } },
+			border = { style = "rounded", text = { top = " Status ", top_align = "left" } },
 			enter = false,
 			focusable = true, -- Must be focusable for scrolling/navigation
 			bufnr = staged_buf,
@@ -713,6 +744,9 @@ function M.open(opts)
 				vim.fn.matchadd("Function", "^M:") -- Blue (Modified)
 				vim.fn.matchadd("ErrorMsg", "^D:") -- Red (Deleted)
 				vim.fn.matchadd("WarningMsg", "^R:") -- Orange (Renamed)
+				vim.fn.matchadd("WarningMsg", "^?:") -- Orange/Warn (Untracked)
+				vim.fn.matchadd("Title", "^Staged:$") -- Header
+				vim.fn.matchadd("Title", "^Unstaged:$") -- Header
 			end)
 		end
 	end
