@@ -82,7 +82,7 @@ local function get_status_files(root)
 			local y = line:sub(2, 2)
 			local path = line:sub(4)
 
-			-- Handle rename output "R  from -> to"
+			-- Handle rename output "R  from -> to"
 			local arrow = path:find(" -> ", 1, true)
 			if arrow then
 				path = path:sub(arrow + 4)
@@ -526,12 +526,35 @@ function M.open(opts)
 		},
 	}, main_box)
 
+	-- Define a pure black highlight for the backdrop
+	vim.api.nvim_set_hl(0, "CommitPadBackdrop", { bg = "#000000", default = true })
+
+	-- Create Backdrop
+	local backdrop_buf = vim.api.nvim_create_buf(false, true)
+	local backdrop_win = vim.api.nvim_open_win(backdrop_buf, false, {
+		relative = "editor",
+		width = vim.o.columns,
+		height = vim.o.lines,
+		row = 0,
+		col = 0,
+		style = "minimal",
+		focusable = false,
+		zindex = 40, -- Lower than Nui (default 50)
+	})
+	vim.api.nvim_set_option_value("winblend", 40, { win = backdrop_win }) -- Darker backdrop (0=opaque, 100=trans)
+	vim.api.nvim_set_option_value("winhighlight", "Normal:CommitPadBackdrop", { win = backdrop_win })
+	vim.bo[backdrop_buf].buftype = "nofile"
+	vim.bo[backdrop_buf].filetype = "commitpad_backdrop"
+
 	M.instance = {
 		layout = layout,
 		title_popup = title_popup,
 		desc_popup = desc_popup,
 		footer_popup = footer_popup,
 		staged_popup = staged_popup,
+		backdrop_win = backdrop_win,
+		backdrop_buf = backdrop_buf,
+		augroup = nil, -- Will be set after mount
 	}
 
 	local function restore_prev_window()
@@ -540,13 +563,27 @@ function M.open(opts)
 		end
 	end
 
-	local function close()
+	-- Logic for closing the layout and optionally restoring focus
+	local function close(skip_restore)
 		if M.instance then
+			-- Clean up backdrop and augroup
+			if M.instance.augroup then
+				pcall(vim.api.nvim_del_augroup_by_id, M.instance.augroup)
+			end
+			if M.instance.backdrop_win and vim.api.nvim_win_is_valid(M.instance.backdrop_win) then
+				vim.api.nvim_win_close(M.instance.backdrop_win, true)
+			end
+			if M.instance.backdrop_buf and vim.api.nvim_buf_is_valid(M.instance.backdrop_buf) then
+				vim.api.nvim_buf_delete(M.instance.backdrop_buf, { force = true })
+			end
 			M.instance.layout:unmount()
 			M.instance = nil
 		end
-		-- jump back to where user was
-		restore_prev_window()
+		-- Only jump back to original window if we are NOT skipping it.
+		-- (skip_restore is true when we are closing because focus moved to another popup)
+		if not skip_restore then
+			restore_prev_window()
+		end
 	end
 
 	local function save_snapshot()
@@ -565,9 +602,9 @@ function M.open(opts)
 		end
 	end
 
-	local function close_with_save()
+	local function close_with_save(skip_restore)
 		save_snapshot()
-		close()
+		close(skip_restore)
 	end
 
 	local function focus_title()
@@ -735,6 +772,30 @@ function M.open(opts)
 	})
 
 	layout:mount()
+
+	-- Auto-close on focus lost
+	local close_augroup = vim.api.nvim_create_augroup("commitpad_autoclose", { clear = true })
+	M.instance.augroup = close_augroup
+	vim.api.nvim_create_autocmd("WinLeave", {
+		group = close_augroup,
+		callback = function()
+			vim.schedule(function()
+				if not M.instance then
+					return
+				end
+				local cur = vim.api.nvim_get_current_win()
+				local is_internal = (cur == M.instance.title_popup.winid)
+					or (cur == M.instance.desc_popup.winid)
+					or (M.instance.footer_popup and cur == M.instance.footer_popup.winid)
+					or (M.instance.staged_popup and cur == M.instance.staged_popup.winid)
+
+				if not is_internal then
+					-- Pass true to skip restoring the previous window, preventing the new popup from being buried
+					close_with_save(true)
+				end
+			end)
+		end,
+	})
 
 	local function apply_win_opts(win)
 		-- Inherit from global vim.go.spell
