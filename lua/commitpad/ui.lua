@@ -41,10 +41,13 @@ local function notify(msg, level)
 	vim.notify(msg, level or vim.log.levels.INFO, { title = "commitpad" })
 end
 
-local function git_out(args, cwd)
+local function git_out(args, cwd, raw)
 	local r = vim.system(args, { text = true, cwd = cwd }):wait()
 	if r.code ~= 0 then
 		return nil, r
+	end
+	if raw then
+		return r.stdout or "", r
 	end
 	return trim(r.stdout or ""), r
 end
@@ -68,7 +71,7 @@ end
 
 -- Get status lists for staged and unstaged
 local function get_status_files(root)
-	local out, _ = git_out({ "git", "status", "--porcelain", "-u" }, root)
+	local out, _ = git_out({ "git", "status", "--porcelain", "-u" }, root, true)
 	if not out or out == "" then
 		return {}, {}
 	end
