@@ -582,13 +582,20 @@ function M.open(opts)
 	end
 
 	-- Helpers for cross-pane navigation
+	local last_input_win = nil
+
 	local function jump_to_staged()
 		vim.cmd("stopinsert")
+		last_input_win = vim.api.nvim_get_current_win()
 		focus_staged()
 	end
 
 	local function jump_from_staged()
-		focus_title()
+		if last_input_win and vim.api.nvim_win_is_valid(last_input_win) then
+			vim.api.nvim_set_current_win(last_input_win)
+		else
+			focus_title()
+		end
 	end
 
 	local function clear_all()
@@ -820,10 +827,46 @@ function M.open(opts)
 		end
 	end
 
+	-- Smart h/l navigation between input buffers and staged files
+	local function smart_l()
+		if not staged_popup then
+			vim.cmd("normal! l")
+			return
+		end
+
+		local line = vim.api.nvim_get_current_line()
+		local col = vim.api.nvim_win_get_cursor(0)[2]
+
+		-- If line is empty or cursor is at the last character, jump to staged
+		if #line == 0 or col >= #line - 1 then
+			jump_to_staged()
+		else
+			vim.cmd("normal! l")
+		end
+	end
+
+	local function smart_h()
+		local col = vim.api.nvim_win_get_cursor(0)[2]
+		-- If cursor is at the first character of the staged buffer, jump back
+		if col == 0 then
+			jump_from_staged()
+		else
+			vim.cmd("normal! h")
+		end
+	end
+
 	-- Apply smart navigation to all buffers
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "j", smart_j, "Smart Down")
 		map(b, "n", "k", smart_k, "Smart Up")
+		if staged_popup then
+			map(b, "n", "l", smart_l, "Smart Right")
+		end
+	end
+
+	-- Apply smart_h to staged buffer
+	if staged_popup then
+		map(staged_popup.bufnr, "n", "h", smart_h, "Smart Left")
 	end
 
 	-- QoL navigation using the fact that Title is always one-liner.
