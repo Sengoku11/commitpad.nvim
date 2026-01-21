@@ -90,15 +90,19 @@ local function get_status_files(root)
 			-- Remove quotes if git output added them
 			path = path:gsub('^"', ""):gsub('"$', "")
 
+			-- Check if file is partially staged (exists in both index and worktree)
+			-- Exclude untracked (?) from this check
+			local is_partial = (x ~= " " and x ~= "?") and (y ~= " ")
+
 			if x ~= " " and x ~= "?" then
-				table.insert(staged, { status = x, path = path })
+				table.insert(staged, { status = x, path = path, partial = is_partial })
 			end
 			-- y ~= " " covers modified worktree
 			-- x == "?" and y == "?" covers untracked
 			if y ~= " " or (x == "?" and y == "?") then
 				local s = (x == "?" and y == "?") and "?" or y
 				if s ~= " " then
-					table.insert(unstaged, { status = s, path = path })
+					table.insert(unstaged, { status = s, path = path, partial = is_partial })
 				end
 			end
 		end
@@ -367,7 +371,13 @@ function M.open(opts)
 						path_text = "…/" .. built
 					end
 				end
-				table.insert(formatted_lines, string.format("%s: %s", f.status, path_text))
+
+				local mark = f.status
+				if f.partial then
+					mark = mark .. "*"
+				end
+
+				table.insert(formatted_lines, string.format("%s: %s", mark, path_text))
 			end
 		end
 
@@ -740,13 +750,17 @@ function M.open(opts)
 		-- Apply syntax highlighting explicitly after mount
 		if vim.api.nvim_win_is_valid(staged_popup.winid) then
 			vim.api.nvim_win_call(staged_popup.winid, function()
-				vim.fn.matchadd("String", "^A:") -- Green (Added)
-				vim.fn.matchadd("Function", "^M:") -- Blue (Modified)
-				vim.fn.matchadd("ErrorMsg", "^D:") -- Red (Deleted)
-				vim.fn.matchadd("WarningMsg", "^R:") -- Orange (Renamed)
-				vim.fn.matchadd("WarningMsg", "^?:") -- Orange/Warn (Untracked)
-				vim.fn.matchadd("Title", "^Staged:$") -- Header
-				vim.fn.matchadd("Title", "^Unstaged:$") -- Header
+				-- STRICT regex: ^Char then optional * then :
+				vim.fn.matchadd("String", [[^A\*\?:]]) -- Green (Added)
+				vim.fn.matchadd("Function", [[^M\*\?:]]) -- Blue (Modified)
+				vim.fn.matchadd("ErrorMsg", [[^D\*\?:]]) -- Red (Deleted)
+				vim.fn.matchadd("WarningMsg", [[^R\*\?:]]) -- Orange (Renamed)
+				vim.fn.matchadd("WarningMsg", [[^?\*\?:]]) -- Orange/Warn (Untracked)
+				-- Highlight star specifically with high priority
+				vim.fn.matchadd("Special", [[^.\zs\*\ze:]], 20)
+				-- Headers
+				vim.fn.matchadd("Title", "^Staged:$")
+				vim.fn.matchadd("Title", "^Unstaged:$")
 			end)
 		end
 	end
