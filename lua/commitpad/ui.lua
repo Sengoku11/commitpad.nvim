@@ -658,6 +658,26 @@ function M.open(opts)
 			-- Footer is preserved intentionally
 			save_snapshot()
 
+			if not is_amend then
+				local amend_body, amend_title = draft_paths_for_worktree(true)
+				local function wipe(p)
+					if not p then
+						return
+					end
+					local b = vim.fn.bufnr(p)
+					if b ~= -1 and vim.api.nvim_buf_is_valid(b) then
+						vim.api.nvim_buf_set_lines(b, 0, -1, false, {})
+						vim.api.nvim_buf_call(b, function()
+							vim.cmd("silent! write")
+						end)
+					else
+						vim.fn.writefile({}, p)
+					end
+				end
+				wipe(amend_body)
+				wipe(amend_title)
+			end
+
 			close()
 		else
 			local err = (res and res.stderr and trim(res.stderr) ~= "" and res.stderr) or "Commit failed."
