@@ -17,6 +17,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 * Visual Validation:
     * Real-time highlighting of title length to assist with 50/72 rule.
     * Flags non-conventional commit types (e.g., `doc:` vs `docs:`) and structural breaks in the `type[scope][!]: description` format.
+* Borderless: Move between panes with just hjkl.
 
 ## Why CommitPad?
 
