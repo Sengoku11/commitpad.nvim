@@ -47,16 +47,11 @@ function M.worktree_gitdir(root)
 	return out
 end
 
---- Get status lists for staged and unstaged files.
----@param root string
+--- Parse git status output.
+---@param out string
 ---@return GitStatusFile[] staged
 ---@return GitStatusFile[] unstaged
-function M.get_status_files(root)
-	local out, _ = M.out({ "git", "status", "--porcelain", "-u" }, root, true)
-	if not out or out == "" then
-		return {}, {}
-	end
-
+local function parse_status_output(out)
 	local staged = {}
 	local unstaged = {}
 
@@ -92,6 +87,21 @@ function M.get_status_files(root)
 		end
 	end
 	return staged, unstaged
+end
+
+--- Get status lists for staged and unstaged files (Async).
+---@param root string
+---@param callback fun(staged: GitStatusFile[], unstaged: GitStatusFile[])
+function M.get_status_files_async(root, callback)
+	-- PERF: Async execution prevents blocking the main thread during heavy git status scans.
+	vim.system({ "git", "status", "--porcelain", "-u" }, { text = true, cwd = root }, function(obj)
+		if obj.code ~= 0 then
+			callback({}, {})
+			return
+		end
+		local staged, unstaged = parse_status_output(obj.stdout or "")
+		callback(staged, unstaged)
+	end)
 end
 
 --- Extract commit hash from git output.

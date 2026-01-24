@@ -176,78 +176,8 @@ function M.open(opts)
 
 	local status_popup = nil
 	if Config.options.stage_files then
-		local staged_list, unstaged_list = Git.get_status_files(root)
-
-		-- Smart path formatting (Start truncation + Smart folding)
-		local formatted_lines = {}
-		local by_name = {}
-
-		-- Build map for collision detection across both lists
-		local function map_files(list)
-			for _, f in ipairs(list) do
-				local name = vim.fn.fnamemodify(f.path, ":t")
-				by_name[name] = by_name[name] or {}
-				table.insert(by_name[name], f)
-			end
-		end
-		map_files(staged_list)
-		map_files(unstaged_list)
-
-		local status_box_width = math.floor(total_width * 0.3)
-		-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
-		local max_len = math.max(5, status_box_width - 5)
-
-		local function format_and_append(list)
-			for _, f in ipairs(list) do
-				local name = vim.fn.fnamemodify(f.path, ":t")
-				local path_text = name
-
-				-- If collision exists, show full path (simplest "smart fold")
-				if #by_name[name] > 1 then
-					path_text = f.path
-				end
-
-				-- Truncate path if too long
-				if vim.fn.strchars(path_text) > max_len then
-					local parts = vim.split(path_text, "/")
-					if #parts > 1 then
-						local built = parts[#parts]
-						for i = #parts - 1, 1, -1 do
-							local candidate = parts[i] .. "/" .. built
-							if vim.fn.strchars("…/" .. candidate) <= max_len then
-								built = candidate
-							else
-								break
-							end
-						end
-						path_text = "…/" .. built
-					end
-				end
-
-				local mark = f.status
-				if f.partial then
-					mark = mark .. "*"
-				end
-
-				table.insert(formatted_lines, string.format("%s: %s", mark, path_text))
-			end
-		end
-
-		if #staged_list > 0 then
-			table.insert(formatted_lines, "Staged:")
-			format_and_append(staged_list)
-		end
-
-		if #unstaged_list > 0 then
-			if #formatted_lines > 0 then
-				table.insert(formatted_lines, "")
-			end
-			table.insert(formatted_lines, "Unstaged:")
-			format_and_append(unstaged_list)
-		end
-
 		local status_buf = vim.api.nvim_create_buf(false, true)
-		vim.api.nvim_buf_set_lines(status_buf, 0, -1, false, formatted_lines)
+		vim.api.nvim_buf_set_lines(status_buf, 0, -1, false, { " Loading status..." })
 		vim.bo[status_buf].filetype = "text"
 		vim.bo[status_buf].modifiable = false
 
@@ -605,6 +535,95 @@ function M.open(opts)
 	})
 
 	layout:mount()
+
+	-- PERF: Defer status calculation to non-blocking callback to allow instant window mounting.
+	if Config.options.stage_files and status_popup then
+		local s_buf = status_popup.bufnr
+
+		Git.get_status_files_async(
+			root,
+			vim.schedule_wrap(function(staged_list, unstaged_list)
+				if not vim.api.nvim_buf_is_valid(s_buf) then
+					return
+				end
+				-- Smart path formatting (Start truncation + Smart folding)
+				local formatted_lines = {}
+				local by_name = {}
+
+				-- Build map for collision detection across both lists
+				local function map_files(list)
+					for _, f in ipairs(list) do
+						local name = vim.fn.fnamemodify(f.path, ":t")
+						by_name[name] = by_name[name] or {}
+						table.insert(by_name[name], f)
+					end
+				end
+				map_files(staged_list)
+				map_files(unstaged_list)
+
+				local status_box_width = math.floor(total_width * 0.3)
+				-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
+				local max_len = math.max(5, status_box_width - 5)
+
+				local function format_and_append(list)
+					for _, f in ipairs(list) do
+						local name = vim.fn.fnamemodify(f.path, ":t")
+						local path_text = name
+
+						-- If collision exists, show full path (simplest "smart fold")
+						if #by_name[name] > 1 then
+							path_text = f.path
+						end
+
+						-- Truncate path if too long
+						if vim.fn.strchars(path_text) > max_len then
+							local parts = vim.split(path_text, "/")
+							if #parts > 1 then
+								local built = parts[#parts]
+								for i = #parts - 1, 1, -1 do
+									local candidate = parts[i] .. "/" .. built
+									if vim.fn.strchars("…/" .. candidate) <= max_len then
+										built = candidate
+									else
+										break
+									end
+								end
+								path_text = "…/" .. built
+							end
+						end
+
+						local mark = f.status
+						if f.partial then
+							mark = mark .. "*"
+						end
+
+						table.insert(formatted_lines, string.format("%s: %s", mark, path_text))
+					end
+				end
+
+				if #staged_list > 0 then
+					table.insert(formatted_lines, "Staged:")
+					format_and_append(staged_list)
+				end
+
+				if #unstaged_list > 0 then
+					if #formatted_lines > 0 then
+						table.insert(formatted_lines, "")
+					end
+					table.insert(formatted_lines, "Unstaged:")
+					format_and_append(unstaged_list)
+				end
+
+				if #formatted_lines == 0 then
+					table.insert(formatted_lines, " No changes.")
+				end
+
+				vim.bo[s_buf].modifiable = true
+				vim.api.nvim_buf_set_lines(s_buf, 0, -1, false, formatted_lines)
+				vim.bo[s_buf].modifiable = false
+			end)
+		)
+	end
 
 	-- Auto-close on focus lost
 	local close_augroup = vim.api.nvim_create_augroup("commitpad_autoclose", { clear = true })

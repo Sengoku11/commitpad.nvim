@@ -4,6 +4,9 @@ local Git = require("commitpad.git")
 ---@class CommitPadFS
 local M = {}
 
+-- PERF: Memoize path resolution to eliminate process spawning overhead (~10-30ms) on repeated toggles.
+local cache = {}
+
 --- Create directory if it doesn't exist.
 ---@param path string
 function M.ensure_dir(path)
@@ -17,6 +20,14 @@ end
 ---@return string|nil footer_path
 ---@return string|nil root
 function M.draft_paths_for_worktree(is_amend)
+	local cwd = vim.uv.cwd()
+	local key = cwd .. "|" .. tostring(is_amend)
+
+	if cache[key] then
+		local res = cache[key]
+		return res[1], res[2], res[3], res[4]
+	end
+
 	local root = Git.worktree_root()
 	if not root then
 		return nil, nil, nil, nil
@@ -29,7 +40,15 @@ function M.draft_paths_for_worktree(is_amend)
 	M.ensure_dir(dir)
 
 	local prefix = is_amend and "amend" or "draft"
-	return dir .. "/" .. prefix .. ".md", dir .. "/" .. prefix .. ".title", dir .. "/" .. prefix .. ".footer", root
+	local result = {
+		dir .. "/" .. prefix .. ".md",
+		dir .. "/" .. prefix .. ".title",
+		dir .. "/" .. prefix .. ".footer",
+		root,
+	}
+
+	cache[key] = result
+	return result[1], result[2], result[3], result[4]
 end
 
 return M
