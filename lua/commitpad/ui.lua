@@ -840,14 +840,19 @@ function M.open(opts)
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "j", smart_j, "Smart Down")
 		map(b, "n", "k", smart_k, "Smart Up")
+		map(b, "n", "<Down>", smart_j, "Smart Down")
+		map(b, "n", "<Up>", smart_k, "Smart Up")
+
 		if status_popup then
 			map(b, "n", "l", smart_l, "Smart Right")
+			map(b, "n", "<Right>", smart_l, "Smart Right")
 		end
 	end
 
 	-- Apply smart_h to status buffer
 	if status_popup then
 		map(status_popup.bufnr, "n", "h", smart_h, "Smart Left")
+		map(status_popup.bufnr, "n", "<Left>", smart_h, "Smart Left")
 	end
 
 	-- QoL navigation using the fact that Title is always one-liner.
@@ -857,7 +862,6 @@ function M.open(opts)
 	map(title_buf, "i", "<C-j>", toggle_focus, "Jump to body")
 	map(title_buf, "n", "o", toggle_focus, "Jump to body")
 	map(title_buf, "n", "O", toggle_focus, "Jump to body")
-	map(title_buf, "n", "<Down>", toggle_focus, "Jump to body")
 
 	update_title()
 
