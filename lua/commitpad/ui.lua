@@ -689,8 +689,13 @@ function M.open(opts)
 		"center"
 	)
 
-	local function map(buf, modes, lhs, rhs, desc)
-		vim.keymap.set(modes, lhs, rhs, { buffer = buf, silent = true, nowait = true, desc = desc })
+	local function map(buf, modes, lhs, rhs, desc, opts)
+		vim.keymap.set(
+			modes,
+			lhs,
+			rhs,
+			vim.tbl_extend("force", { buffer = buf, silent = true, nowait = true, desc = desc }, opts or {})
+		)
 	end
 
 	-- Apply shared mappings to all active buffers
@@ -855,9 +860,21 @@ function M.open(opts)
 		map(status_popup.bufnr, "n", "<Left>", smart_h, "Smart Left")
 	end
 
+	local function allow_completion_or_toggle(key)
+		return function()
+			if vim.fn.pumvisible() == 1 then
+				return key
+			end
+			vim.schedule(function()
+				toggle_focus()
+			end)
+			return ""
+		end
+	end
+
 	-- QoL navigation using the fact that Title is always one-liner.
-	map(title_buf, "i", "<CR>", toggle_focus, "Jump to body")
-	map(title_buf, "i", "<Tab>", toggle_focus, "Jump to body")
+	map(title_buf, "i", "<CR>", allow_completion_or_toggle("<CR>"), "Jump to body", { expr = true })
+	map(title_buf, "i", "<Tab>", allow_completion_or_toggle("<Tab>"), "Jump to body", { expr = true })
 	map(title_buf, "i", "<Down>", toggle_focus, "Jump to body")
 	map(title_buf, "i", "<C-j>", toggle_focus, "Jump to body")
 	map(title_buf, "n", "o", toggle_focus, "Jump to body")
