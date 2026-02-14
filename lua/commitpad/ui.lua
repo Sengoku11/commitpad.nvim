@@ -727,19 +727,14 @@ function M.open(opts)
 
 	local is_clean = Utils.trim((Buf.get_lines(title_buf)[1] or "")) == ""
 
-	local hint_l = is_amend and "reset" or "clear"
-	local hint_cr = is_amend and "amend" or "commit"
-	local hint_push = is_amend and "amend+push" or "commit+push"
+	local hint_l = is_amend and "Reset" or "Clear"
+	local hint_cr = is_amend and "Amend" or "Commit"
+	local hint_push = is_amend and "Amend & Push" or "Commit & Push"
 
 	if Config.options.hints.controls then
 		title_popup.border:set_text(
 			"bottom",
-			string.format(
-				"  [Leader+Enter] %s  [Leader+gp] %s  [Ctrl+l] %s  [q/Esc] save+close  ",
-				hint_cr,
-				hint_push,
-				hint_l
-			),
+			string.format("  [<leader><CR>] %s   [<leader>gp] %s   [<C-l>] %s  ", hint_cr, hint_push, hint_l),
 			"center"
 		)
 	end
