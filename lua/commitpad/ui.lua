@@ -453,7 +453,7 @@ function M.open(opts)
 		Utils.notify("Reset to HEAD.")
 	end
 
-	local function do_commit()
+	local function do_commit(push_after)
 		local title, desc, footer = get_commit_content(title_buf, desc_buf, footer_buf)
 		if title == "" then
 			Utils.notify("Title is empty (first -m).", vim.log.levels.WARN)
@@ -481,18 +481,64 @@ function M.open(opts)
 		local _, res = Git.out(args, root)
 		if res and res.code == 0 then
 			-- best-effort: confirm hash (works even if git output parsing fails)
-			local hash = Git.extract_commit_hash(res.stdout, res.stderr)
-			if not hash then
+			local short_hash = Git.extract_commit_hash(res.stdout, res.stderr)
+			if not short_hash then
 				local h2 = Git.out({ "git", "rev-parse", "--short", "HEAD" }, root)
 				if h2 and h2 ~= "" then
-					hash = h2
+					short_hash = h2
 				end
 			end
 
-			if hash then
-				Utils.notify(string.format("Committed `%s`: %s", hash, title))
+			if push_after then
+				if short_hash then
+					Utils.notify(string.format("Committed `%s`: %s", short_hash, title))
+				else
+					Utils.notify(string.format("Committed: %s", title))
+				end
+
+				local full_hash = Git.out({ "git", "rev-parse", "HEAD" }, root)
+				local branch = Git.out({ "git", "branch", "--show-current" }, root)
+				if not branch or branch == "" or branch == "HEAD" then
+					branch = Git.out({ "git", "rev-parse", "--abbrev-ref", "HEAD" }, root)
+				end
+
+				if full_hash and full_hash ~= "" and branch and branch ~= "" and branch ~= "HEAD" then
+					local refspec = string.format("%s:refs/heads/%s", full_hash, branch)
+					local push_args = { "git", "push" }
+					if is_amend then
+						table.insert(push_args, "--force-with-lease")
+					end
+					table.insert(push_args, "origin")
+					table.insert(push_args, refspec)
+
+					local shown_hash = short_hash or full_hash:sub(1, 7)
+					Utils.notify(string.format("Pushing `%s` to `%s`...", shown_hash, branch))
+
+					vim.system(push_args, { text = true, cwd = root }, function(push_res)
+						vim.schedule(function()
+							if push_res and push_res.code == 0 then
+								Utils.notify(string.format("Pushed `%s` to `%s`.", shown_hash, branch))
+							else
+								local err = (push_res and Utils.trim(push_res.stderr or "")) or ""
+								if err == "" then
+									err = (push_res and Utils.trim(push_res.stdout or "")) or ""
+								end
+								Utils.notify(
+									string.format("Push failed for `%s`: %s", shown_hash, err ~= "" and err or "Push failed."),
+									vim.log.levels.ERROR
+								)
+							end
+						end)
+					end)
+				else
+					Utils.notify("Committed, but failed to resolve hash/branch for push.", vim.log.levels.ERROR)
+				end
 			else
-				Utils.notify(string.format("Committed: %s", title))
+				if short_hash then
+					Utils.notify(string.format("Committed `%s`: %s", short_hash, title))
+				else
+					Utils.notify(string.format("Committed: %s", title))
+				end
 			end
 
 			-- Clear text and save immediately.
@@ -682,10 +728,16 @@ function M.open(opts)
 
 	local hint_l = is_amend and "reset" or "clear"
 	local hint_cr = is_amend and "amend" or "commit"
+	local hint_push = is_amend and "amend+push" or "commit+push"
 
 	title_popup.border:set_text(
 		"bottom",
-		string.format("  [Tab] switch  [Leader+Enter] %s  [Ctrl+l] %s  [q/Esc] save and close  ", hint_cr, hint_l),
+		string.format(
+			"  [Leader+Enter] %s  [Leader+gp] %s  [Ctrl+l] %s  [q/Esc] save+close  ",
+			hint_cr,
+			hint_push,
+			hint_l
+		),
 		"center"
 	)
 
@@ -718,7 +770,12 @@ function M.open(opts)
 			map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
 		end
 
-		map(b, { "n" }, "<leader><CR>", do_commit, "Commit")
+		map(b, { "n" }, "<leader><CR>", function()
+			do_commit(false)
+		end, "Commit")
+		map(b, { "n" }, "<leader>gp", function()
+			do_commit(true)
+		end, "Commit and Push")
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
 
 		if status_popup then
