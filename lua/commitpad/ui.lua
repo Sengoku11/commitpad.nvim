@@ -523,6 +523,7 @@ function M.open(opts)
 								if err == "" then
 									err = (push_res and Utils.trim(push_res.stdout or "")) or ""
 								end
+								-- stylua: ignore
 								Utils.notify(
 									string.format("Push failed for `%s`: %s", shown_hash, err ~= "" and err or "Push failed."),
 									vim.log.levels.ERROR
@@ -730,16 +731,18 @@ function M.open(opts)
 	local hint_cr = is_amend and "amend" or "commit"
 	local hint_push = is_amend and "amend+push" or "commit+push"
 
-	title_popup.border:set_text(
-		"bottom",
-		string.format(
-			"  [Leader+Enter] %s  [Leader+gp] %s  [Ctrl+l] %s  [q/Esc] save+close  ",
-			hint_cr,
-			hint_push,
-			hint_l
-		),
-		"center"
-	)
+	if Config.options.hints.controls then
+		title_popup.border:set_text(
+			"bottom",
+			string.format(
+				"  [Leader+Enter] %s  [Leader+gp] %s  [Ctrl+l] %s  [q/Esc] save+close  ",
+				hint_cr,
+				hint_push,
+				hint_l
+			),
+			"center"
+		)
+	end
 
 	local function map(buf, modes, lhs, rhs, desc, opts)
 		vim.keymap.set(

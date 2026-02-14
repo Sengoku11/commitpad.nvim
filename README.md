@@ -47,6 +47,9 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
     -- Defaults
     footer = false, -- A dedicated buffer that provides a "sticky" area for repetitive tags
     stage_files = true, -- Display staged files in UI
+    hints = {
+      controls = true, -- Display control hints in the popup border
+    },
   },
 }
 ```
