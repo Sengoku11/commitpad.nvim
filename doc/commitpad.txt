@@ -1,0 +1,174 @@
+*commitpad.txt*      CommitPad for Neovim                        Last change: 2026-02-14
+
+COMMITPAD                                                          *commitpad*
+
+CommitPad is a floating UI for writing Git commit messages inside Neovim.
+It keeps commit drafts per worktree and supports a fast commit/amend workflow.
+
+==============================================================================
+CONTENTS                                                   *commitpad-contents*
+
+1. Requirements ...................................... |commitpad-requirements|
+2. Setup .................................................... |commitpad-setup|
+3. Commands .............................................. |commitpad-commands|
+4. Options ................................................ |commitpad-options|
+5. Behavior .............................................. |commitpad-behavior|
+6. Keymaps ................................................ |commitpad-keymaps|
+7. Draft Files .............................................. |commitpad-files|
+8. Notes .................................................... |commitpad-notes|
+
+==============================================================================
+1. REQUIREMENTS                                         *commitpad-requirements*
+
+- Neovim 0.10+
+- `MunifTanjim/nui.nvim`
+- Git repository/worktree
+
+==============================================================================
+2. SETUP                                                       *commitpad-setup*
+
+Minimal setup:
+>
+    require("commitpad").setup()
+<
+
+Example with lazy.nvim:
+>
+    {
+      "Sengoku11/commitpad.nvim",
+      dependencies = { "MunifTanjim/nui.nvim" },
+      cmd = { "CommitPad", "CommitPadAmend" },
+      keys = {
+        { "<leader>gc",  "<cmd>CommitPad<CR>",      desc = "CommitPad" },
+        { "<leader>gac", "<cmd>CommitPadAmend<CR>", desc = "CommitPadAmend" },
+      },
+      opts = {
+        footer = false,
+        stage_files = false,
+        hints = { controls = true },
+      },
+    }
+<
+
+After installing, run:
+>
+    :helptags ALL
+<
+Then open this help with:
+>
+    :help commitpad
+<
+
+==============================================================================
+3. COMMANDS                                                 *commitpad-commands*
+
+                                                     *:CommitPad* *commitpad-open*
+:CommitPad
+    Open CommitPad for a new commit message draft.
+
+                                          *:CommitPadAmend* *commitpad-amend*
+:CommitPadAmend
+    Open CommitPad in amend mode. If the amend draft is empty, CommitPad loads
+    the current `HEAD` commit message into the title/body buffers.
+
+`setup()` can rename both commands via `command` and `amend_command`.
+
+==============================================================================
+4. OPTIONS                                                   *commitpad-options*
+
+All options are passed to `require("commitpad").setup({...})`.
+
+                                                *commitpad-option-footer*
+`footer` (boolean, default: `false`)
+    Show a footer buffer for reusable commit trailer text.
+    Footer text is preserved after successful commits.
+
+                                           *commitpad-option-stage-files*
+`stage_files` (boolean, default: `false`)
+    Show a right-side status pane listing staged and unstaged files.
+
+                                                *commitpad-option-hints*
+`hints.controls` (boolean, default: `true`)
+    Show action hints in the title popup border.
+
+                                              *commitpad-option-command*
+`command` (string, default: `"CommitPad"`)
+    User command name for opening normal mode.
+
+                                        *commitpad-option-amend-command*
+`amend_command` (string, default: `"CommitPadAmend"`)
+    User command name for opening amend mode.
+
+==============================================================================
+5. BEHAVIOR                                                 *commitpad-behavior*
+
+- Commit title is always a single line.
+- Title shows a live length counter:
+  - `<= 50`: neutral
+  - `51-72`: warning
+  - `> 72`: error
+- Title gets lint highlighting when it does not match conventional commit form:
+  `type(scope)!: description`
+- On close (including focus loss), buffers are auto-saved.
+- On successful commit:
+  - title/body are cleared
+  - footer is preserved
+- `Commit & Push` pushes to `origin/<current-branch>`.
+  In amend mode, it uses `--force-with-lease`.
+
+==============================================================================
+6. KEYMAPS                                                   *commitpad-keymaps*
+
+Keymaps are local to CommitPad buffers.
+
+Input buffers (title/body/footer):
+
+- `q`, `<Esc>`: close and save draft
+- `<C-w><C-h>`, `<C-w><C-l>`: close and save draft
+- `<leader><CR>`: commit (or amend)
+- `<leader>gp`: commit and push (or amend and push)
+- `<Tab>`: cycle focus between panes
+- `<C-l>`:
+  - normal mode: clear title/body
+  - amend mode: reset title/body from `HEAD`
+
+Pane navigation:
+
+- `<C-j>`, `<C-k>`: move focus between input panes
+- `j`, `k`, `<Down>`, `<Up>`: smart vertical movement across panes
+- With status pane enabled:
+  - `l`, `<Right>` from input edge: jump to status pane
+  - `h`, `<Left>` at status column 1: jump back to input
+  - `<leader>l`, `]]`: jump to status pane
+  - `<leader>h`, `[[`: jump back from status pane
+
+Title insert-mode convenience:
+
+- `<CR>`, `<Tab>`: move to next pane when completion menu is not visible
+- `<Down>`, `<C-j>`: move to next pane
+
+==============================================================================
+7. DRAFT FILES                                                  *commitpad-files*
+
+CommitPad stores drafts under the current worktree git dir:
+
+>
+    <git-dir>/commitpad/draft.title
+    <git-dir>/commitpad/draft.md
+    <git-dir>/commitpad/draft.footer
+    <git-dir>/commitpad/amend.title
+    <git-dir>/commitpad/amend.md
+    <git-dir>/commitpad/amend.footer
+<
+
+This keeps drafts isolated per worktree and avoids project-root temp files.
+
+==============================================================================
+8. NOTES                                                       *commitpad-notes*
+
+- CommitPad follows Unix philosophy and focuses on the commit experience,
+  not a full Git toolkit.
+- CommitPad expects you to stage files before committing.
+- CommitPad does not manage commit history beyond `--amend`.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

@@ -6,7 +6,7 @@ A lightweight popup for writing Git commit messages directly within Neovim.
 
 It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.com/mitchellh/status/1867314498723594247)) by providing a dedicated writing environment.
 
-> **Note:** CommitPad assumes you have staged your changes (`git add`) before running. It also does not manage existing commits.
+> **Note:** CommitPad follows Unix philosophy and focuses on the best commit experience, not a full Git toolkit.
 
 ## Features
 
