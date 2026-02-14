@@ -1,6 +1,6 @@
 # CommitPad
 
-![commitpad.nvim](docs/showcase.png)
+![commitpad.nvim](assets/showcase.png)
 
 A lightweight popup for writing Git commit messages directly within Neovim.
 
