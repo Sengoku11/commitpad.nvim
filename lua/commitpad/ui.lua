@@ -726,6 +726,12 @@ function M.open(opts)
 	end
 
 	local is_clean = Utils.trim((Buf.get_lines(title_buf)[1] or "")) == ""
+	local mappings = Config.options.mappings
+	local map_commit = mappings.commit
+	local map_commit_and_push = mappings.commit_and_push
+	local map_clear_or_reset = mappings.clear_or_reset
+	local map_jump_to_status = mappings.jump_to_status
+	local map_jump_to_input = mappings.jump_to_input
 
 	local hint_l = is_amend and "Reset" or "Clear"
 	local hint_cr = is_amend and "Amend" or "Commit"
@@ -734,17 +740,25 @@ function M.open(opts)
 	if Config.options.hints.controls then
 		title_popup.border:set_text(
 			"bottom",
-			string.format("  [<leader><CR>] %s   [<leader>gp] %s   [<C-l>] %s  ", hint_cr, hint_push, hint_l),
+			string.format(
+				"  [%s] %s   [%s] %s   [%s] %s  ",
+				map_commit,
+				hint_cr,
+				map_commit_and_push,
+				hint_push,
+				map_clear_or_reset,
+				hint_l
+			),
 			"center"
 		)
 	end
 
-	local function map(buf, modes, lhs, rhs, desc, opts)
+	local function map(buf, modes, lhs, rhs, desc, map_opts)
 		vim.keymap.set(
 			modes,
 			lhs,
 			rhs,
-			vim.tbl_extend("force", { buffer = buf, silent = true, nowait = true, desc = desc }, opts or {})
+			vim.tbl_extend("force", { buffer = buf, silent = true, nowait = true, desc = desc }, map_opts or {})
 		)
 	end
 
@@ -754,6 +768,7 @@ function M.open(opts)
 		table.insert(active_buffers, footer_buf)
 	end
 
+	-- stylua: ignore
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
 		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
@@ -763,22 +778,18 @@ function M.open(opts)
 		map(b, "n", "<C-w><C-h>", close_with_save, "Close (Auto-Save)")
 
 		if is_amend then
-			map(b, { "n", "i" }, "<C-l>", do_reset_amend, "Reset to HEAD")
+			map(b, { "n", "i" }, map_clear_or_reset, do_reset_amend, "Reset to HEAD")
 		else
-			map(b, { "n", "i" }, "<C-l>", clear_all, "Clear Body/Title")
+			map(b, { "n", "i" }, map_clear_or_reset, clear_all, "Clear Body/Title")
 		end
 
-		map(b, { "n" }, "<leader><CR>", function()
-			do_commit(false)
-		end, "Commit")
-		map(b, { "n" }, "<leader>gp", function()
-			do_commit(true)
-		end, "Commit and Push")
+		map(b, { "n" }, map_commit, function() do_commit(false) end, "Commit")
+		map(b, { "n" }, map_commit_and_push, function() do_commit(true) end, "Commit and Push")
 		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
 
 		if status_popup then
 			-- Jump to the Status box
-			map(b, { "n" }, "<leader>l", jump_to_status, "Jump to Status")
+			map(b, { "n" }, map_jump_to_status, jump_to_status, "Jump to Status")
 			map(b, { "n" }, "]]", jump_to_status, "Jump to Status")
 		end
 	end
@@ -787,7 +798,7 @@ function M.open(opts)
 	if status_popup then
 		map(status_popup.bufnr, "n", "q", close_with_save, "Close")
 		map(status_popup.bufnr, "n", "<Esc>", close_with_save, "Close")
-		map(status_popup.bufnr, "n", "<leader>h", jump_from_status, "Jump to Input")
+		map(status_popup.bufnr, "n", map_jump_to_input, jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "[[", jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
 	end

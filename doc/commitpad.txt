@@ -46,6 +46,13 @@ Example with lazy.nvim:
         footer = false,
         stage_files = false,
         hints = { controls = true },
+        mappings = {
+          commit = "<leader><CR>",
+          commit_and_push = "<leader>gp",
+          clear_or_reset = "<C-l>",
+          jump_to_status = "<leader>l",
+          jump_to_input = "<leader>h",
+        },
       },
     }
 <
@@ -91,6 +98,28 @@ All options are passed to `require("commitpad").setup({...})`.
 `hints.controls` (boolean, default: `true`)
     Show action hints in the title popup border.
 
+                                                     *commitpad-option-mappings*
+`mappings` (table)
+    Override CommitPad-local mappings.
+    Invalid overrides (empty/non-string) show an error and fall back to default.
+    If two actions resolve to the same key, the conflicting override is reset
+    to its default and an error is shown.
+
+`mappings.commit` (string, default: `"<leader><CR>"`)
+    Commit (or amend) from input buffers.
+
+`mappings.commit_and_push` (string, default: `"<leader>gp"`)
+    Commit and push (or amend and push) from input buffers.
+
+`mappings.clear_or_reset` (string, default: `"<C-l>"`)
+    Clear title/body in normal mode, or reset amend content from `HEAD`.
+
+`mappings.jump_to_status` (string, default: `"<leader>l"`)
+    Jump from input buffers to the status pane when enabled.
+
+`mappings.jump_to_input` (string, default: `"<leader>h"`)
+    Jump back from status pane to input buffers.
+
                                                       *commitpad-option-command*
 `command` (string, default: `"CommitPad"`)
     User command name for opening normal mode.
@@ -125,10 +154,11 @@ Input buffers (title/body/footer):
 
 - `q`, `<Esc>`: close and save draft
 - `<C-w><C-h>`, `<C-w><C-l>`: close and save draft
-- `<leader><CR>`: commit (or amend)
-- `<leader>gp`: commit and push (or amend and push)
+- `mappings.commit` (default `<leader><CR>`): commit (or amend)
+- `mappings.commit_and_push` (default `<leader>gp`): commit and push
+  (or amend and push)
 - `<Tab>`: cycle focus between panes
-- `<C-l>`:
+- `mappings.clear_or_reset` (default `<C-l>`):
   - normal mode: clear title/body
   - amend mode: reset title/body from `HEAD`
 
@@ -139,8 +169,9 @@ Pane navigation:
 - With status pane enabled:
   - `l`, `<Right>` from input edge: jump to status pane
   - `h`, `<Left>` at status column 1: jump back to input
-  - `<leader>l`, `]]`: jump to status pane
-  - `<leader>h`, `[[`: jump back from status pane
+  - `mappings.jump_to_status` (default `<leader>l`), `]]`: jump to status pane
+  - `mappings.jump_to_input` (default `<leader>h`), `[[`: jump back from
+    status pane
 
 Title insert-mode convenience:
 

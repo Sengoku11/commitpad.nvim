@@ -50,6 +50,13 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
     hints = {
       controls = true, -- Display control hints in the popup border
     },
+    mappings = {
+      commit = "<leader><CR>",
+      commit_and_push = "<leader>gp",
+      clear_or_reset = "<C-l>",
+      jump_to_status = "<leader>l",
+      jump_to_input = "<leader>h",
+    },
   },
 }
 ```

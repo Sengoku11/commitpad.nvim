@@ -13,6 +13,7 @@ commitpad-option-amend-command	commitpad.txt	/*commitpad-option-amend-command*
 commitpad-option-command	commitpad.txt	/*commitpad-option-command*
 commitpad-option-footer	commitpad.txt	/*commitpad-option-footer*
 commitpad-option-hints	commitpad.txt	/*commitpad-option-hints*
+commitpad-option-mappings	commitpad.txt	/*commitpad-option-mappings*
 commitpad-option-stage-files	commitpad.txt	/*commitpad-option-stage-files*
 commitpad-options	commitpad.txt	/*commitpad-options*
 commitpad-requirements	commitpad.txt	/*commitpad-requirements*
