@@ -3,7 +3,7 @@ local M = {}
 
 ---@class CommitPadStatusLineMeta
 ---@field full_line string
----@field full_path string
+---@field full_path? string
 ---@field show_hover boolean
 
 ---@class CommitPadStatusPane
@@ -141,8 +141,39 @@ function StatusPane:refresh_async(git, root, total_width)
 			map_files(unstaged_list)
 
 			local status_box_width = math.floor(total_width * 0.3)
-			-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
+			-- Effective text width: box width - 2 (borders) - 3 (status "M ").
 			local max_len = math.max(5, status_box_width - 5)
+			-- Effective text width: box width - 2 (borders).
+			local branch_max_len = math.max(5, status_box_width - 2)
+
+			local branch_name = git.current_branch(root)
+			if not branch_name then
+				local short_head = git.out({ "git", "rev-parse", "--short", "HEAD" }, root)
+				if short_head and short_head ~= "" then
+					branch_name = "detached@" .. short_head
+				else
+					branch_name = "(unknown)"
+				end
+			end
+
+			local branch_text = branch_name
+			local branch_over_limit = vim.fn.strchars(branch_text) > branch_max_len
+			if branch_over_limit then
+				branch_text = vim.fn.strcharpart(branch_text, 0, math.max(1, branch_max_len - 1)) .. "…"
+			end
+
+			local branch_display_line = branch_text
+			local branch_full_line = branch_name
+			table.insert(formatted_lines, branch_display_line)
+			self.line_meta[#formatted_lines] = {
+				full_line = branch_full_line,
+				show_hover = branch_display_line ~= branch_full_line or branch_over_limit,
+			}
+
+			local has_changes = (#staged_list > 0) or (#unstaged_list > 0)
+			if has_changes then
+				table.insert(formatted_lines, "")
+			end
 
 			local function format_and_append(list)
 				for _, f in ipairs(list) do
@@ -178,8 +209,8 @@ function StatusPane:refresh_async(git, root, total_width)
 						mark = mark .. "*"
 					end
 
-					local display_line = string.format("%s: %s", mark, path_text)
-					local full_line = string.format("%s: %s", mark, f.path)
+					local display_line = string.format("%-2s %s", mark, path_text)
+					local full_line = string.format("%-2s %s", mark, f.path)
 					table.insert(formatted_lines, display_line)
 					self.line_meta[#formatted_lines] = {
 						full_line = full_line,
@@ -190,20 +221,21 @@ function StatusPane:refresh_async(git, root, total_width)
 			end
 
 			if #staged_list > 0 then
-				table.insert(formatted_lines, "Staged:")
+				table.insert(formatted_lines, string.format("Staged (%d)", #staged_list))
 				format_and_append(staged_list)
 			end
 
 			if #unstaged_list > 0 then
-				if #formatted_lines > 0 then
+				if #staged_list > 0 then
 					table.insert(formatted_lines, "")
 				end
-				table.insert(formatted_lines, "Unstaged:")
+				table.insert(formatted_lines, string.format("Unstaged (%d)", #unstaged_list))
 				format_and_append(unstaged_list)
 			end
 
-			if #formatted_lines == 0 then
-				table.insert(formatted_lines, " No changes.")
+			if not has_changes then
+				table.insert(formatted_lines, "")
+				table.insert(formatted_lines, "No changes.")
 			end
 
 			vim.bo[s_buf].modifiable = true
@@ -243,22 +275,38 @@ function StatusPane:apply_highlights()
 		return
 	end
 
+	local function pick_hl(primary, fallback)
+		if vim.fn.hlexists(primary) == 1 then
+			return primary
+		end
+		return fallback
+	end
+
+	local branch_hl = pick_hl("fugitiveHeader", "Label")
+	local staged_heading_hl = pick_hl("fugitiveStagedHeading", "Include")
+	local unstaged_heading_hl = pick_hl("fugitiveUnstagedHeading", "Macro")
+	local count_hl = pick_hl("fugitiveCount", "Number")
+
 	vim.api.nvim_win_call(self.popup.winid, function()
-		-- STRICT regex: ^Char then optional * then :
-		vim.fn.matchadd("String", [[^A\*\?:]]) -- Green (Added)
-		vim.fn.matchadd("Function", [[^M\*\?:]]) -- Blue (Modified)
-		vim.fn.matchadd("ErrorMsg", [[^D\*\?:]]) -- Red (Deleted)
-		vim.fn.matchadd("WarningMsg", [[^R\*\?:]]) -- Orange (Renamed)
-		vim.fn.matchadd("WarningMsg", [[^?\*\?:]]) -- Orange/Warn (Untracked)
+		-- Branch line (row 1): match fugitive's "Head:" label color.
+		vim.fn.matchaddpos(branch_hl, { { 1 } }, 15)
+		-- STRICT regex: ^Char then optional * then whitespace.
+		vim.fn.matchadd("String", [[\v^A\*?\s]]) -- Green (Added)
+		vim.fn.matchadd("Function", [[\v^M\*?\s]]) -- Blue (Modified)
+		vim.fn.matchadd("ErrorMsg", [[\v^D\*?\s]]) -- Red (Deleted)
+		vim.fn.matchadd("WarningMsg", [[\v^R\*?\s]]) -- Orange (Renamed)
+		vim.fn.matchadd("WarningMsg", [[\v^\?\*?\s]]) -- Orange/Warn (Untracked)
 		-- Highlight star specifically with high priority
-		vim.fn.matchadd("Special", [[^.\zs\*\ze:]], 20)
+		vim.fn.matchadd("Special", [[\v^.\zs\*\ze\s]], 20)
 		-- Headers
-		vim.fn.matchadd("Title", "^Staged:$")
-		vim.fn.matchadd("Title", "^Unstaged:$")
+		vim.fn.matchadd(staged_heading_hl, [[^Staged\ze (\d\+)$]])
+		vim.fn.matchadd(unstaged_heading_hl, [[^Unstaged\ze (\d\+)$]])
+		vim.fn.matchadd(count_hl, [[\v^Staged \(\zs\d+\ze\)$]])
+		vim.fn.matchadd(count_hl, [[\v^Unstaged \(\zs\d+\ze\)$]])
 	end)
 end
 
----Yank full filepath from status line(s), excluding status prefixes like "M:".
+---Yank canonical value from status line(s), excluding status prefixes like "M " for file rows.
 function StatusPane:yank_line()
 	if not self.popup then
 		return
@@ -277,8 +325,12 @@ function StatusPane:yank_line()
 
 	for row = start_row, end_row do
 		local meta = self.line_meta[row]
-		if meta and meta.full_path then
-			table.insert(yanked, meta.full_path)
+		if meta then
+			if meta.full_path then
+				table.insert(yanked, meta.full_path)
+			else
+				table.insert(yanked, meta.full_line)
+			end
 		else
 			local text = vim.api.nvim_buf_get_lines(s_buf, row - 1, row, false)[1] or ""
 			table.insert(yanked, text)
