@@ -9,6 +9,7 @@ local M = {}
 ---@field clear_or_reset string Clear title/body or reset amend from HEAD
 ---@field jump_to_status string Jump from input to status pane
 ---@field jump_to_input string Jump from status pane to input
+---@field stage_toggle string Toggle stage/unstage for file under cursor in status pane
 
 ---@type CommitPadResolvedMappingsOptions
 local DEFAULT_MAPPINGS = {
@@ -17,6 +18,7 @@ local DEFAULT_MAPPINGS = {
 	clear_or_reset = "<C-l>",
 	jump_to_status = "<leader>l",
 	jump_to_input = "<leader>h",
+	stage_toggle = "s",
 }
 
 ---@class CommitPadResolvedHintsOptions
@@ -49,6 +51,7 @@ local DEFAULT_OPTIONS = {
 ---@field clear_or_reset? string Clear title/body or reset amend from HEAD override (default: "<C-l>")
 ---@field jump_to_status? string Jump from input to status pane override (default: "<leader>l")
 ---@field jump_to_input? string Jump from status pane to input override (default: "<leader>h")
+---@field stage_toggle? string Toggle stage/unstage for file under cursor in status pane override (default: "s")
 
 ---@class CommitPadOptions
 ---@field footer? boolean Show the footer buffer (default: false)
@@ -61,7 +64,14 @@ local DEFAULT_OPTIONS = {
 ---@type CommitPadResolvedOptions
 M.options = vim.deepcopy(DEFAULT_OPTIONS)
 
-local mapping_keys = { "commit", "commit_and_push", "clear_or_reset", "jump_to_status", "jump_to_input" }
+local mapping_keys = {
+	"commit",
+	"commit_and_push",
+	"clear_or_reset",
+	"jump_to_status",
+	"jump_to_input",
+	"stage_toggle",
+}
 
 ---@return CommitPadMappingsOptions
 local function default_mappings_override()
@@ -71,6 +81,7 @@ local function default_mappings_override()
 		clear_or_reset = DEFAULT_MAPPINGS.clear_or_reset,
 		jump_to_status = DEFAULT_MAPPINGS.jump_to_status,
 		jump_to_input = DEFAULT_MAPPINGS.jump_to_input,
+		stage_toggle = DEFAULT_MAPPINGS.stage_toggle,
 	}
 end
 

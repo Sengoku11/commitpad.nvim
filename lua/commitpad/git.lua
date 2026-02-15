@@ -132,6 +132,30 @@ function M.get_status_files_async(root, callback)
 	end)
 end
 
+--- Stage a file asynchronously.
+---@param root string
+---@param path string
+---@param callback fun(result: table)
+function M.stage_file_async(root, path, callback)
+	vim.system({ "git", "add", "--", path }, { text = true, cwd = root }, callback)
+end
+
+--- Unstage a file asynchronously.
+--- Uses `git restore --staged` and falls back to `git reset HEAD --` for older Git.
+---@param root string
+---@param path string
+---@param callback fun(result: table)
+function M.unstage_file_async(root, path, callback)
+	vim.system({ "git", "restore", "--staged", "--", path }, { text = true, cwd = root }, function(obj)
+		if obj.code == 0 then
+			callback(obj)
+			return
+		end
+
+		vim.system({ "git", "reset", "HEAD", "--", path }, { text = true, cwd = root }, callback)
+	end)
+end
+
 --- Extract commit hash from git output.
 ---@param stdout string|nil
 ---@param stderr string|nil

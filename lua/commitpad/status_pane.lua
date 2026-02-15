@@ -1,9 +1,12 @@
 ---@class CommitPadStatusPaneModule
 local M = {}
+local Utils = require("commitpad.utils")
 
 ---@class CommitPadStatusLineMeta
 ---@field full_line string
 ---@field full_path? string
+---@field section? "staged"|"unstaged"
+---@field partial? boolean
 ---@field show_hover boolean
 
 ---@class CommitPadStatusPane
@@ -112,12 +115,15 @@ end
 ---@param git CommitPadGit
 ---@param root string
 ---@param total_width integer
-function StatusPane:refresh_async(git, root, total_width)
+---@param focus_path? string
+---@param focus_section? "staged"|"unstaged"
+function StatusPane:refresh_async(git, root, total_width, focus_path, focus_section)
 	if not self.popup then
 		return
 	end
 
 	local s_buf = self.popup.bufnr
+	local s_win = self.popup.winid
 	git.get_status_files_async(
 		root,
 		vim.schedule_wrap(function(staged_list, unstaged_list)
@@ -175,7 +181,7 @@ function StatusPane:refresh_async(git, root, total_width)
 				table.insert(formatted_lines, "")
 			end
 
-			local function format_and_append(list)
+			local function format_and_append(list, section)
 				for _, f in ipairs(list) do
 					local name = vim.fn.fnamemodify(f.path, ":t")
 					local path_text = name
@@ -215,6 +221,8 @@ function StatusPane:refresh_async(git, root, total_width)
 					self.line_meta[#formatted_lines] = {
 						full_line = full_line,
 						full_path = f.path,
+						section = section,
+						partial = f.partial,
 						show_hover = (display_line ~= full_line) or over_limit_before_trunc,
 					}
 				end
@@ -222,7 +230,7 @@ function StatusPane:refresh_async(git, root, total_width)
 
 			if #staged_list > 0 then
 				table.insert(formatted_lines, string.format("Staged (%d)", #staged_list))
-				format_and_append(staged_list)
+				format_and_append(staged_list, "staged")
 			end
 
 			if #unstaged_list > 0 then
@@ -230,7 +238,7 @@ function StatusPane:refresh_async(git, root, total_width)
 					table.insert(formatted_lines, "")
 				end
 				table.insert(formatted_lines, string.format("Unstaged (%d)", #unstaged_list))
-				format_and_append(unstaged_list)
+				format_and_append(unstaged_list, "unstaged")
 			end
 
 			if not has_changes then
@@ -241,9 +249,138 @@ function StatusPane:refresh_async(git, root, total_width)
 			vim.bo[s_buf].modifiable = true
 			vim.api.nvim_buf_set_lines(s_buf, 0, -1, false, formatted_lines)
 			vim.bo[s_buf].modifiable = false
+			if focus_path and s_win and vim.api.nvim_win_is_valid(s_win) then
+				local fallback_row = nil
+				for row, meta in ipairs(self.line_meta) do
+					if meta.full_path == focus_path then
+						if not fallback_row then
+							fallback_row = row
+						end
+						if focus_section == nil or meta.section == focus_section then
+							fallback_row = row
+							break
+						end
+					end
+				end
+				if fallback_row then
+					pcall(vim.api.nvim_win_set_cursor, s_win, { fallback_row, 0 })
+				end
+			end
 			self:render_hover()
 		end)
 	)
+end
+
+---@param result table|nil
+---@param fallback string
+---@return string
+local function format_action_error(result, fallback)
+	local err = ""
+	if result then
+		err = Utils.trim(result.stderr or "")
+		if err == "" then
+			err = Utils.trim(result.stdout or "")
+		end
+	end
+	if err == "" then
+		return fallback
+	end
+	return err
+end
+
+---@class CommitPadStatusCursorActionOpts
+---@field execute fun(git: CommitPadGit, root: string, path: string, callback: fun(result: table|nil))
+---@field verb string
+---@field error_fallback string
+
+---Run a stage/unstage-like action against the file under cursor.
+---@param self CommitPadStatusPane
+---@param git CommitPadGit
+---@param root string
+---@param total_width integer
+---@param meta CommitPadStatusLineMeta
+---@param opts CommitPadStatusCursorActionOpts
+local function run_file_action(self, git, root, total_width, meta, opts)
+	local path = meta.full_path
+	if not path then
+		Utils.notify("No file under cursor.", vim.log.levels.WARN)
+		return
+	end
+
+	local section = meta.section
+	opts.execute(git, root, path, function(result)
+		vim.schedule(function()
+			if result and result.code == 0 then
+				self:refresh_async(git, root, total_width, path, section)
+				return
+			end
+			Utils.notify(
+				string.format(
+					"Failed to %s `%s`: %s",
+					opts.verb,
+					path,
+					format_action_error(result, opts.error_fallback)
+				),
+				vim.log.levels.ERROR
+			)
+		end)
+	end)
+end
+
+---@return CommitPadStatusLineMeta|nil
+function StatusPane:file_under_cursor()
+	if not self.popup then
+		return nil
+	end
+
+	local s_win = self.popup.winid
+	if not s_win or not vim.api.nvim_win_is_valid(s_win) then
+		return nil
+	end
+
+	local row = vim.api.nvim_win_get_cursor(s_win)[1]
+	local meta = self.line_meta[row]
+	if not meta or not meta.full_path then
+		return nil
+	end
+
+	return meta
+end
+
+---Toggle stage/unstage for file under cursor in status pane and refresh status view.
+---@param git CommitPadGit
+---@param root string
+---@param total_width integer
+function StatusPane:toggle_stage_under_cursor(git, root, total_width)
+	local meta = self:file_under_cursor()
+	if not meta then
+		Utils.notify("No file under cursor.", vim.log.levels.WARN)
+		return
+	end
+
+	local opts = nil
+	if meta.section == "staged" then
+		opts = {
+			execute = function(git_mod, cwd, path, callback)
+				git_mod.unstage_file_async(cwd, path, callback)
+			end,
+			verb = "unstage",
+			error_fallback = "git unstage failed.",
+		}
+	elseif meta.section == "unstaged" then
+		opts = {
+			execute = function(git_mod, cwd, path, callback)
+				git_mod.stage_file_async(cwd, path, callback)
+			end,
+			verb = "stage",
+			error_fallback = "git add failed.",
+		}
+	else
+		Utils.notify("No actionable file under cursor.", vim.log.levels.WARN)
+		return
+	end
+
+	run_file_action(self, git, root, total_width, meta, opts)
 end
 
 ---Attach status hover autocmds to a shared lifecycle augroup.

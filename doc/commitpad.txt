@@ -52,6 +52,7 @@ Example with lazy.nvim:
           clear_or_reset = "<C-l>",
           jump_to_status = "<leader>l",
           jump_to_input = "<leader>h",
+          stage_toggle = "s",
         },
       },
     }
@@ -122,6 +123,9 @@ All options are passed to `require("commitpad").setup({...})`.
 `mappings.jump_to_input` (string, default: `"<leader>h"`)
     Jump back from status pane to input buffers.
 
+`mappings.stage_toggle` (string, default: `"s"`)
+    Toggle stage/unstage for file under cursor in status pane.
+
                                                       *commitpad-option-command*
 `command` (string, default: `"CommitPad"`)
     User command name for opening normal mode.
@@ -176,6 +180,7 @@ Pane navigation:
   - `mappings.jump_to_status` (default `<leader>l`), `]]`: jump to status pane
   - `mappings.jump_to_input` (default `<leader>h`), `[[`: jump back from
     status pane
+  - `mappings.stage_toggle` (default `s`): toggle stage/unstage under cursor
 
 Title insert-mode convenience:
 
@@ -203,7 +208,7 @@ This keeps drafts isolated per worktree and avoids project-root temp files.
 
 - CommitPad follows Unix philosophy and focuses on the commit experience,
   not a full Git toolkit.
-- CommitPad expects you to stage files before committing.
+- With `stage_files = true`, status pane supports staging/unstaging by file.
 - CommitPad does not manage commit history beyond `--amend`.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

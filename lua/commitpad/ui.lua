@@ -592,6 +592,7 @@ function M.open(opts)
 	local map_clear_or_reset = mappings.clear_or_reset
 	local map_jump_to_status = mappings.jump_to_status
 	local map_jump_to_input = mappings.jump_to_input
+	local map_stage_toggle = mappings.stage_toggle
 
 	local function render_control_hints()
 		if not Config.options.hints.controls then
@@ -670,6 +671,13 @@ function M.open(opts)
 		map(status_popup.bufnr, "n", map_jump_to_input, jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "[[", jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
+		map(
+			status_popup.bufnr,
+			"n",
+			map_stage_toggle,
+			function() status:toggle_stage_under_cursor(Git, root, total_width) end,
+			"Toggle Stage"
+		)
 		map(status_popup.bufnr, "n", "yy", function() status:yank_line() end, "Yank Full Status Line")
 	end
 

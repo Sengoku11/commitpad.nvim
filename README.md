@@ -57,6 +57,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
       clear_or_reset = "<C-l>",
       jump_to_status = "<leader>l",
       jump_to_input = "<leader>h",
+      stage_toggle = "s", -- Stage/Unstage file in the status pane when stage_files = true
     },
   },
 }
