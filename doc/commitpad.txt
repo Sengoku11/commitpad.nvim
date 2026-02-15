@@ -97,6 +97,8 @@ All options are passed to `require("commitpad").setup({...})`.
                                                         *commitpad-option-hints*
 `hints.controls` (boolean, default: `true`)
     Show action hints in the title popup border.
+    Hints compact automatically on narrow windows and may be hidden if
+    there is not enough space.
 
                                                      *commitpad-option-mappings*
 `mappings` (table)
@@ -144,6 +146,8 @@ All options are passed to `require("commitpad").setup({...})`.
   - footer is preserved
 - `Commit & Push` pushes to `origin/<current-branch>`.
   In amend mode, it uses `--force-with-lease`.
+- Control hints in the title border auto-compact on narrow windows and may
+  hide when space is too tight.
 
 ==============================================================================
 6. KEYMAPS                                                   *commitpad-keymaps*

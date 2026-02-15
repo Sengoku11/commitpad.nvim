@@ -10,6 +10,8 @@ local Git = require("commitpad.git")
 local FS = require("commitpad.fs")
 ---@type CommitPadStatusPaneModule
 local StatusPane = require("commitpad.status_pane")
+---@type CommitPadHints
+local Hints = require("commitpad.hints")
 
 ---@class CommitPadInstance
 ---@field layout NuiLayout
@@ -644,25 +646,33 @@ function M.open(opts)
 	local map_jump_to_status = mappings.jump_to_status
 	local map_jump_to_input = mappings.jump_to_input
 
-	local hint_l = is_amend and "Reset" or "Clear"
-	local hint_cr = is_amend and "Amend" or "Commit"
-	local hint_push = is_amend and "Amend & Push" or "Commit & Push"
+	local function render_control_hints()
+		if not Config.options.hints.controls then
+			title_popup.border:set_text("bottom", "", "left")
+			return
+		end
+		if not title_popup.winid or not vim.api.nvim_win_is_valid(title_popup.winid) then
+			return
+		end
 
-	if Config.options.hints.controls then
-		title_popup.border:set_text(
-			"bottom",
-			string.format(
-				"  [%s] %s   [%s] %s   [%s] %s  ",
-				map_commit,
-				hint_cr,
-				map_commit_and_push,
-				hint_push,
-				map_clear_or_reset,
-				hint_l
-			),
-			"center"
-		)
+		local available = math.max(0, vim.api.nvim_win_get_width(title_popup.winid) - 2)
+		local hint = Hints.pick_control_hint({
+			is_amend = is_amend,
+			map_commit = map_commit,
+			map_commit_and_push = map_commit_and_push,
+			map_clear_or_reset = map_clear_or_reset,
+			available_width = available,
+		})
+		title_popup.border:set_text("bottom", hint.text, hint.align)
 	end
+
+	render_control_hints()
+	vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, {
+		group = close_augroup,
+		callback = function()
+			vim.schedule(render_control_hints)
+		end,
+	})
 
 	local function map(buf, modes, lhs, rhs, desc, map_opts)
 		vim.keymap.set(

@@ -18,9 +18,10 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
     * Real-time highlighting of title length to assist with 50/72 rule.
     * Flags non-conventional commit types (e.g., `doc:` vs `docs:`) and structural breaks in the `type[scope][!]: description` format.
 * Streamlined Workflow:
-    * Non-blocking, async UI for zero friction.
-    * Seamlessly move between panes with `hjkl` as if borders don't exist.
-    * Instantly edit the previous commit via `:CommitPadAmend`.
+    * Non-blocking async UI.
+    * Seamless navigation between panes with `hjkl`.
+    * Start amend mode with the previous commit message.
+    * Amend and push in one step, avoiding manual `git push --force-with-lease`.
     * Automatically carry over tags (e.g., `Signed-off-by`) between commits.
 
 ## Why CommitPad?
