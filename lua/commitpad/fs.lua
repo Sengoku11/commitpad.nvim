@@ -51,4 +51,28 @@ function M.draft_paths_for_worktree(is_amend)
 	return result[1], result[2], result[3], result[4]
 end
 
+--- Clear amend title/body drafts while preserving amend footer.
+function M.clear_amend_drafts()
+	local amend_body, amend_title = M.draft_paths_for_worktree(true)
+
+	local function wipe(path)
+		if not path then
+			return
+		end
+
+		local b = vim.fn.bufnr(path)
+		if b ~= -1 and vim.api.nvim_buf_is_valid(b) then
+			vim.api.nvim_buf_set_lines(b, 0, -1, false, {})
+			vim.api.nvim_buf_call(b, function()
+				vim.cmd("silent! write")
+			end)
+		else
+			vim.fn.writefile({}, path)
+		end
+	end
+
+	wipe(amend_body)
+	wipe(amend_title)
+end
+
 return M

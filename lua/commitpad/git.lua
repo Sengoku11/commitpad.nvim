@@ -25,6 +25,34 @@ function M.out(args, cwd, raw)
 	return Utils.trim(r.stdout or ""), r
 end
 
+--- Build `git commit` arguments from structured message parts.
+---@param title string
+---@param desc string[]
+---@param footer string[]
+---@param amend boolean
+---@return string[]
+function M.build_commit_args(title, desc, footer, amend)
+	local args = { "git", "commit" }
+	if amend then
+		table.insert(args, "--amend")
+	end
+
+	table.insert(args, "-m")
+	table.insert(args, title)
+
+	if #desc > 0 then
+		table.insert(args, "-m")
+		table.insert(args, table.concat(desc, "\n"))
+	end
+
+	if #footer > 0 then
+		table.insert(args, "-m")
+		table.insert(args, table.concat(footer, "\n"))
+	end
+
+	return args
+end
+
 --- Get the root of the current git worktree.
 ---@return string|nil
 function M.worktree_root()
@@ -121,6 +149,81 @@ function M.extract_commit_hash(stdout, stderr)
 		return h
 	end
 	return nil
+end
+
+--- Commit current index with provided message parts.
+---@param root string
+---@param title string
+---@param desc string[]
+---@param footer string[]
+---@param amend boolean
+---@return string|nil short_hash
+---@return table|nil result
+function M.commit_message(root, title, desc, footer, amend)
+	local args = M.build_commit_args(title, desc, footer, amend)
+	local _, res = M.out(args, root)
+	if not res or res.code ~= 0 then
+		return nil, res
+	end
+
+	-- Best-effort hash detection even if commit output format differs.
+	local short_hash = M.extract_commit_hash(res.stdout, res.stderr)
+	if not short_hash then
+		local h2 = M.out({ "git", "rev-parse", "--short", "HEAD" }, root)
+		if h2 and h2 ~= "" then
+			short_hash = h2
+		end
+	end
+
+	return short_hash, res
+end
+
+--- Resolve current branch in a way that avoids detached HEAD.
+---@param root string
+---@return string|nil
+function M.current_branch(root)
+	local branch = M.out({ "git", "branch", "--show-current" }, root)
+	if not branch or branch == "" or branch == "HEAD" then
+		branch = M.out({ "git", "rev-parse", "--abbrev-ref", "HEAD" }, root)
+	end
+
+	if not branch or branch == "" or branch == "HEAD" then
+		return nil
+	end
+
+	return branch
+end
+
+--- Resolve commit hash + branch used for explicit HEAD push refspec.
+---@param root string
+---@return string|nil full_hash
+---@return string|nil branch
+function M.resolve_push_target(root)
+	local full_hash = M.out({ "git", "rev-parse", "HEAD" }, root)
+	local branch = M.current_branch(root)
+	if not full_hash or full_hash == "" or not branch then
+		return nil, nil
+	end
+	return full_hash, branch
+end
+
+---@class CommitPadPushOpts
+---@field branch string
+---@field full_hash string
+---@field force_with_lease boolean
+
+--- Push explicit commit hash to origin/<branch> asynchronously.
+---@param root string
+---@param opts CommitPadPushOpts
+---@param callback fun(result: table)
+function M.push_head_async(root, opts, callback)
+	local push_args = { "git", "push" }
+	if opts.force_with_lease then
+		table.insert(push_args, "--force-with-lease")
+	end
+	table.insert(push_args, "origin")
+	table.insert(push_args, string.format("%s:refs/heads/%s", opts.full_hash, opts.branch))
+	vim.system(push_args, { text = true, cwd = root }, callback)
 end
 
 return M

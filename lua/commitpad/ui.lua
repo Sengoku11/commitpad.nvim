@@ -463,67 +463,34 @@ function M.open(opts)
 	end
 
 	local function do_commit(push_after)
+		-- 1) Collect and validate message parts from current buffers.
 		local title, desc, footer = get_commit_content(title_buf, desc_buf, footer_buf)
 		if title == "" then
 			Utils.notify("Title is empty (first -m).", vim.log.levels.WARN)
 			return
 		end
 
-		local args = { "git", "commit" }
-		if is_amend then
-			table.insert(args, "--amend")
-		end
-
-		table.insert(args, "-m")
-		table.insert(args, title)
-
-		if #desc > 0 then
-			table.insert(args, "-m")
-			table.insert(args, table.concat(desc, "\n"))
-		end
-
-		if #footer > 0 then
-			table.insert(args, "-m")
-			table.insert(args, table.concat(footer, "\n"))
-		end
-
-		local _, res = Git.out(args, root)
+		-- 2) Execute git commit/amend synchronously; stop early on failure.
+		local short_hash, res = Git.commit_message(root, title, desc, footer, is_amend)
 		if res and res.code == 0 then
-			-- best-effort: confirm hash (works even if git output parsing fails)
-			local short_hash = Git.extract_commit_hash(res.stdout, res.stderr)
-			if not short_hash then
-				local h2 = Git.out({ "git", "rev-parse", "--short", "HEAD" }, root)
-				if h2 and h2 ~= "" then
-					short_hash = h2
-				end
+			if short_hash then
+				Utils.notify(string.format("Committed `%s`: %s", short_hash, title))
+			else
+				Utils.notify(string.format("Committed: %s", title))
 			end
 
 			if push_after then
-				if short_hash then
-					Utils.notify(string.format("Committed `%s`: %s", short_hash, title))
-				else
-					Utils.notify(string.format("Committed: %s", title))
-				end
-
-				local full_hash = Git.out({ "git", "rev-parse", "HEAD" }, root)
-				local branch = Git.out({ "git", "branch", "--show-current" }, root)
-				if not branch or branch == "" or branch == "HEAD" then
-					branch = Git.out({ "git", "rev-parse", "--abbrev-ref", "HEAD" }, root)
-				end
-
-				if full_hash and full_hash ~= "" and branch and branch ~= "" and branch ~= "HEAD" then
-					local refspec = string.format("%s:refs/heads/%s", full_hash, branch)
-					local push_args = { "git", "push" }
-					if is_amend then
-						table.insert(push_args, "--force-with-lease")
-					end
-					table.insert(push_args, "origin")
-					table.insert(push_args, refspec)
-
+				-- 3) Optional async push step; commit stays successful even if push fails.
+				local full_hash, branch = Git.resolve_push_target(root)
+				if full_hash and branch then
 					local shown_hash = short_hash or full_hash:sub(1, 7)
 					Utils.notify(string.format("Pushing `%s` to `%s`...", shown_hash, branch))
 
-					vim.system(push_args, { text = true, cwd = root }, function(push_res)
+					Git.push_head_async(root, {
+						branch = branch,
+						full_hash = full_hash,
+						force_with_lease = is_amend,
+					}, function(push_res)
 						vim.schedule(function()
 							if push_res and push_res.code == 0 then
 								Utils.notify(string.format("Pushed `%s` to `%s`.", shown_hash, branch))
@@ -543,40 +510,20 @@ function M.open(opts)
 				else
 					Utils.notify("Committed, but failed to resolve hash/branch for push.", vim.log.levels.ERROR)
 				end
-			else
-				if short_hash then
-					Utils.notify(string.format("Committed `%s`: %s", short_hash, title))
-				else
-					Utils.notify(string.format("Committed: %s", title))
-				end
 			end
 
-			-- Clear text and save immediately.
+			-- 4) Commit succeeded: clear input drafts, keep footer, then close UI.
 			Buf.set_lines(title_buf, { "" })
 			Buf.set_lines(desc_buf, { "" })
-			-- Footer is preserved intentionally
 			save_snapshot()
 
 			if not is_amend then
-				local amend_body, amend_title = FS.draft_paths_for_worktree(true)
-				local function wipe(p)
-					if not p then
-						return
-					end
-					local b = vim.fn.bufnr(p)
-					if b ~= -1 and vim.api.nvim_buf_is_valid(b) then
-						vim.api.nvim_buf_set_lines(b, 0, -1, false, {})
-						Buf.save(b)
-					else
-						vim.fn.writefile({}, p)
-					end
-				end
-				wipe(amend_body)
-				wipe(amend_title)
+				FS.clear_amend_drafts()
 			end
 
 			close()
 		else
+			-- Commit failed: keep draft buffers intact for retry/edit.
 			local err = (res and res.stderr and Utils.trim(res.stderr) ~= "" and res.stderr) or "Commit failed."
 			Utils.notify(err, vim.log.levels.ERROR)
 			-- keep draft intact on failure
@@ -716,6 +663,7 @@ function M.open(opts)
 	end
 
 	-- Mappings for Status Popup
+	-- stylua: ignore
 	if status_popup then
 		map(status_popup.bufnr, "n", "q", close_with_save, "Close")
 		map(status_popup.bufnr, "n", "<Esc>", close_with_save, "Close")
@@ -726,13 +674,10 @@ function M.open(opts)
 	end
 
 	-- Specific navigation
+	-- stylua: ignore
 	local nav_map = function(buf, down_func, up_func)
-		if down_func then
-			map(buf, { "n", "i" }, "<C-j>", down_func, "Focus Down")
-		end
-		if up_func then
-			map(buf, { "n", "i" }, "<C-k>", up_func, "Focus Up")
-		end
+		if down_func then map(buf, { "n", "i" }, "<C-j>", down_func, "Focus Down") end
+		if up_func then map(buf, { "n", "i" }, "<C-k>", up_func, "Focus Up") end
 	end
 
 	nav_map(title_buf, focus_desc, nil)
