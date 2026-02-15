@@ -8,6 +8,8 @@ local Buf = require("commitpad.buf")
 local Git = require("commitpad.git")
 ---@type CommitPadFS
 local FS = require("commitpad.fs")
+---@type CommitPadStatusPaneModule
+local StatusPane = require("commitpad.status_pane")
 
 ---@class CommitPadInstance
 ---@field layout NuiLayout
@@ -193,6 +195,8 @@ function M.open(opts)
 		})
 	end
 
+	local status = StatusPane.new(status_popup)
+
 	-- Setup namespaces
 	local ns_id = vim.api.nvim_create_namespace("commitpad_counter")
 	local lint_ns = vim.api.nvim_create_namespace("commitpad_lint")
@@ -348,6 +352,7 @@ function M.open(opts)
 	-- Logic for closing the layout and optionally restoring focus
 	local function close(skip_restore)
 		if M.instance then
+			status:clear_hover()
 			-- Clean up backdrop and augroup
 			if M.instance.augroup then
 				pcall(vim.api.nvim_del_augroup_by_id, M.instance.augroup)
@@ -431,9 +436,11 @@ function M.open(opts)
 		vim.cmd("stopinsert")
 		last_input_win = vim.api.nvim_get_current_win()
 		focus_status()
+		status:render_hover()
 	end
 
 	local function jump_from_status()
+		status:clear_hover()
 		if last_input_win and vim.api.nvim_win_is_valid(last_input_win) then
 			vim.api.nvim_set_current_win(last_input_win)
 		else
@@ -585,91 +592,7 @@ function M.open(opts)
 
 	-- PERF: Defer status calculation to non-blocking callback to allow instant window mounting.
 	if Config.options.stage_files and status_popup then
-		local s_buf = status_popup.bufnr
-
-		Git.get_status_files_async(
-			root,
-			vim.schedule_wrap(function(staged_list, unstaged_list)
-				if not vim.api.nvim_buf_is_valid(s_buf) then
-					return
-				end
-				-- Smart path formatting (Start truncation + Smart folding)
-				local formatted_lines = {}
-				local by_name = {}
-
-				-- Build map for collision detection across both lists
-				local function map_files(list)
-					for _, f in ipairs(list) do
-						local name = vim.fn.fnamemodify(f.path, ":t")
-						by_name[name] = by_name[name] or {}
-						table.insert(by_name[name], f)
-					end
-				end
-				map_files(staged_list)
-				map_files(unstaged_list)
-
-				local status_box_width = math.floor(total_width * 0.3)
-				-- Effective text width: box width - 2 (borders) - 3 (status "M: ")
-				local max_len = math.max(5, status_box_width - 5)
-
-				local function format_and_append(list)
-					for _, f in ipairs(list) do
-						local name = vim.fn.fnamemodify(f.path, ":t")
-						local path_text = name
-
-						-- If collision exists, show full path (simplest "smart fold")
-						if #by_name[name] > 1 then
-							path_text = f.path
-						end
-
-						-- Truncate path if too long
-						if vim.fn.strchars(path_text) > max_len then
-							local parts = vim.split(path_text, "/")
-							if #parts > 1 then
-								local built = parts[#parts]
-								for i = #parts - 1, 1, -1 do
-									local candidate = parts[i] .. "/" .. built
-									if vim.fn.strchars("…/" .. candidate) <= max_len then
-										built = candidate
-									else
-										break
-									end
-								end
-								path_text = "…/" .. built
-							end
-						end
-
-						local mark = f.status
-						if f.partial then
-							mark = mark .. "*"
-						end
-
-						table.insert(formatted_lines, string.format("%s: %s", mark, path_text))
-					end
-				end
-
-				if #staged_list > 0 then
-					table.insert(formatted_lines, "Staged:")
-					format_and_append(staged_list)
-				end
-
-				if #unstaged_list > 0 then
-					if #formatted_lines > 0 then
-						table.insert(formatted_lines, "")
-					end
-					table.insert(formatted_lines, "Unstaged:")
-					format_and_append(unstaged_list)
-				end
-
-				if #formatted_lines == 0 then
-					table.insert(formatted_lines, " No changes.")
-				end
-
-				vim.bo[s_buf].modifiable = true
-				vim.api.nvim_buf_set_lines(s_buf, 0, -1, false, formatted_lines)
-				vim.bo[s_buf].modifiable = false
-			end)
-		)
+		status:refresh_async(Git, root, total_width)
 	end
 
 	-- Auto-close on focus lost
@@ -695,6 +618,9 @@ function M.open(opts)
 			end)
 		end,
 	})
+	if status_popup then
+		status:setup_autocmds(close_augroup)
+	end
 
 	local function apply_win_opts(win)
 		-- Inherit from global vim.go.spell
@@ -707,22 +633,7 @@ function M.open(opts)
 		apply_win_opts(footer_popup.winid)
 	end
 	if status_popup then
-		-- Apply syntax highlighting explicitly after mount
-		if vim.api.nvim_win_is_valid(status_popup.winid) then
-			vim.api.nvim_win_call(status_popup.winid, function()
-				-- STRICT regex: ^Char then optional * then :
-				vim.fn.matchadd("String", [[^A\*\?:]]) -- Green (Added)
-				vim.fn.matchadd("Function", [[^M\*\?:]]) -- Blue (Modified)
-				vim.fn.matchadd("ErrorMsg", [[^D\*\?:]]) -- Red (Deleted)
-				vim.fn.matchadd("WarningMsg", [[^R\*\?:]]) -- Orange (Renamed)
-				vim.fn.matchadd("WarningMsg", [[^?\*\?:]]) -- Orange/Warn (Untracked)
-				-- Highlight star specifically with high priority
-				vim.fn.matchadd("Special", [[^.\zs\*\ze:]], 20)
-				-- Headers
-				vim.fn.matchadd("Title", "^Staged:$")
-				vim.fn.matchadd("Title", "^Unstaged:$")
-			end)
-		end
+		status:apply_highlights()
 	end
 
 	local is_clean = Utils.trim((Buf.get_lines(title_buf)[1] or "")) == ""
@@ -801,6 +712,7 @@ function M.open(opts)
 		map(status_popup.bufnr, "n", map_jump_to_input, jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "[[", jump_from_status, "Jump to Input")
 		map(status_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
+		map(status_popup.bufnr, "n", "yy", function() status:yank_line() end, "Yank Full Status Line")
 	end
 
 	-- Specific navigation
