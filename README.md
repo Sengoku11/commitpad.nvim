@@ -6,12 +6,12 @@ A lightweight popup for writing Git commit messages directly within Neovim.
 
 It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.com/mitchellh/status/1867314498723594247)) by providing a dedicated writing environment.
 
-> **Note:** CommitPad follows Unix philosophy and focuses on the best commit experience, not a full Git toolkit.
+> CommitPad focuses on one thing: delivering the best commit experience. It doesn't replace a full Git toolkit.
 
 ## Features
 
 * Markdown Buffer: The input is a `filetype=markdown` buffer, enabling your formatters, linters, snippets, and LSP.
-* Persistent & Isolated Drafts: Stored in `.git/commitpad/draft.md`.
+* Persistent & Isolated Drafts: Stored in your `.git` directory (`.git/commitpad/` or `.git/worktrees/<name>/commitpad/`).
     * No `.gitmessage` clutter or `.gitignore` pollution.
     * Drafts are isolated per worktree and persist across sessions.
 * Visual Validation:
@@ -22,6 +22,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
     * Seamless navigation between panes with `hjkl`.
     * Start amend mode with the previous commit message.
     * Amend and push in one step, avoiding manual `git push --force-with-lease`.
+    * View and stage files in optional Git status pane.
     * Automatically carry over tags (e.g., `Signed-off-by`) between commits.
 
 ## Why CommitPad?
@@ -31,7 +32,7 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 * Vs `lazygit`: Leverages your full Neovim setup (LSP, spell check), avoiding the overhead of a TUI context switch.
 * Vs `git commit -m`: Enables iterative drafting and multiline formatting, rather than hasty one-liners.
 
-## Installation 
+## Installation
 
 **Lazy.nvim**
 
@@ -39,26 +40,34 @@ It facilitates a descriptive commit style (e.g. [Mitchell Hashimoto](https://x.c
 {
   "Sengoku11/commitpad.nvim",
   dependencies = { "MunifTanjim/nui.nvim" },
-  cmd = { "CommitPad" },
+  cmd = { "CommitPad", "CommitPadAmend" },
   keys = {
     { "<leader>gc", "<cmd>CommitPad<cr>", desc = "CommitPad" },
     { "<leader>gac", "<cmd>CommitPadAmend<cr>", desc = "CommitPadAmend" },
   },
   opts = {
-    -- Defaults
-    footer = false, -- A dedicated buffer that provides a "sticky" area for repetitive tags
-    stage_files = true, -- Display staged files in UI
-    hints = {
-      controls = true, -- Display control hints in the popup border
-    },
-    mappings = {
-      commit = "<leader><CR>",
-      commit_and_push = "<leader>gp",
-      clear_or_reset = "<C-l>",
-      jump_to_status = "<leader>l",
-      jump_to_input = "<leader>h",
-      stage_toggle = "s", -- Stage/Unstage file in the status pane when stage_files = true
-    },
+    -- Recommended options
+    stage_files = true, -- Display staged files in UI so you can stage/unstage without leaving the popup
+  },
+}
+```
+
+**Default Options** 
+
+```lua
+opts = {
+  footer = false, -- A dedicated buffer that provides a "sticky" area for repetitive tags
+  stage_files = false, -- Display staged files in UI (Git status pane)
+  hints = {
+    controls = true, -- Display control hints in the popup border
+  },
+  mappings = {
+    commit = "<leader><CR>",
+    commit_and_push = "<leader>gp",
+    clear_or_reset = "<C-l>",
+    jump_to_status = "<leader>l",
+    jump_to_input = "<leader>h",
+    stage_toggle = "s", -- Stage/Unstage file in the status pane when stage_files = true
   },
 }
 ```
