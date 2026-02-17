@@ -571,9 +571,20 @@ function M.open(opts)
 		status:setup_autocmds(close_augroup)
 	end
 
-	local function apply_win_opts(win)
-		-- Inherit from global vim.go.spell
-		pcall(vim.api.nvim_set_option_value, "spell", vim.go.spell, { win = win })
+	local function apply_win_opts(win, opts)
+		opts = opts or {}
+		local spell = opts.spell
+		if spell == nil then
+			-- Inherit from global vim.go.spell by default.
+			spell = vim.go.spell
+		end
+		pcall(vim.api.nvim_set_option_value, "spell", spell, { win = win })
+		if opts.wrap ~= nil then
+			pcall(vim.api.nvim_set_option_value, "wrap", opts.wrap, { win = win })
+		end
+		if opts.linebreak ~= nil then
+			pcall(vim.api.nvim_set_option_value, "linebreak", opts.linebreak, { win = win })
+		end
 	end
 
 	apply_win_opts(title_popup.winid)
@@ -582,6 +593,8 @@ function M.open(opts)
 		apply_win_opts(footer_popup.winid)
 	end
 	if status_popup then
+		-- Keep status rows unwrapped so vertical movement stays row-accurate.
+		apply_win_opts(status_popup.winid, { spell = false, wrap = false, linebreak = false })
 		status:apply_highlights()
 	end
 
@@ -782,6 +795,27 @@ function M.open(opts)
 		end
 	end
 
+	local function move_status(delta)
+		if not status_popup or vim.api.nvim_get_current_buf() ~= status_popup.bufnr then
+			return
+		end
+
+		local s_win = status_popup.winid
+		if not s_win or not vim.api.nvim_win_is_valid(s_win) then
+			return
+		end
+
+		local step = math.max(1, vim.v.count1)
+		local cursor = vim.api.nvim_win_get_cursor(s_win)
+		local row = cursor[1] + (delta * step)
+		local total = vim.api.nvim_buf_line_count(status_popup.bufnr)
+		row = math.max(1, math.min(total, row))
+
+		local line = vim.api.nvim_buf_get_lines(status_popup.bufnr, row - 1, row, false)[1] or ""
+		local col = math.min(cursor[2], #line)
+		vim.api.nvim_win_set_cursor(s_win, { row, col })
+	end
+
 	-- Apply smart navigation to all buffers
 	for _, b in ipairs(active_buffers) do
 		map(b, "n", "j", smart_j, "Smart Down")
@@ -797,6 +831,8 @@ function M.open(opts)
 
 	-- Apply smart_h to status buffer
 	if status_popup then
+		map(status_popup.bufnr, "n", "<Down>", function() move_status(1) end, "Move Down")
+		map(status_popup.bufnr, "n", "<Up>", function() move_status(-1) end, "Move Up")
 		map(status_popup.bufnr, "n", "h", smart_h, "Smart Left")
 		map(status_popup.bufnr, "n", "<Left>", smart_h, "Smart Left")
 	end
