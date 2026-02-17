@@ -60,6 +60,7 @@ opts = {
   stage_files = false, -- Display staged files in UI (Git status pane)
   hints = {
     controls = true, -- Display control hints in the popup border
+    titles = true, -- Display annotations in popup titles
   },
   mappings = {
     commit = "<leader><CR>",

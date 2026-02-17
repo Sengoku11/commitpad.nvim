@@ -23,6 +23,7 @@ local DEFAULT_MAPPINGS = {
 
 ---@class CommitPadResolvedHintsOptions
 ---@field controls boolean Display control hints in the input popup border
+---@field titles boolean Display title/footer annotations in popup borders
 
 ---@class CommitPadResolvedOptions
 ---@field footer boolean Show the footer buffer
@@ -38,12 +39,14 @@ local DEFAULT_OPTIONS = {
 	stage_files = false,
 	hints = {
 		controls = true,
+		titles = true,
 	},
 	mappings = DEFAULT_MAPPINGS,
 }
 
 ---@class CommitPadHintsOptions
 ---@field controls? boolean Display control hints in the input popup border (default: true)
+---@field titles? boolean Display title/footer annotations in popup borders (default: true)
 
 ---@class CommitPadMappingsOptions
 ---@field commit? string Commit/amend action override (default: "<leader><CR>")
@@ -56,7 +59,7 @@ local DEFAULT_OPTIONS = {
 ---@class CommitPadOptions
 ---@field footer? boolean Show the footer buffer (default: false)
 ---@field stage_files? boolean Show staged files sidebar (default: false)
----@field hints? CommitPadHintsOptions Hint display options (default: { controls = true })
+---@field hints? CommitPadHintsOptions Hint display options (default: { controls = true, titles = true })
 ---@field mappings? CommitPadMappingsOptions CommitPad-local mappings
 ---@field command? string Command name (default: "CommitPad")
 ---@field amend_command? string Amend command name (default: "CommitPadAmend")

@@ -45,7 +45,7 @@ Example with lazy.nvim:
       opts = {
         footer = false,
         stage_files = false,
-        hints = { controls = true },
+        hints = { controls = true, titles = true },
         mappings = {
           commit = "<leader><CR>",
           commit_and_push = "<leader>gp",
@@ -100,6 +100,10 @@ All options are passed to `require("commitpad").setup({...})`.
     Show action hints in the title popup border.
     Hints compact automatically on narrow windows and may be hidden if
     there is not enough space.
+
+`hints.titles` (boolean, default: `true`)
+    Show title/footer annotations in popup borders (`[Amend]`,
+    `(Persistent)`).
 
                                                      *commitpad-option-mappings*
 `mappings` (table)

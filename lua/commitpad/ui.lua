@@ -145,8 +145,9 @@ function M.open(opts)
 		end
 	end
 
+	local show_title_hints = Config.options.hints.titles ~= false
 	local border_top = " Title"
-	if is_amend then
+	if is_amend and show_title_hints then
 		border_top = " Title [Amend] "
 	end
 
@@ -166,8 +167,9 @@ function M.open(opts)
 
 	local footer_popup = nil
 	if Config.options.footer and footer_buf then
+		local footer_border_top = show_title_hints and " Footer (Persistent)" or " Footer"
 		footer_popup = Popup({
-			border = { style = "rounded", text = { top = " Footer (Persistent)", top_align = "left" } },
+			border = { style = "rounded", text = { top = footer_border_top, top_align = "left" } },
 			enter = false,
 			focusable = true,
 			bufnr = footer_buf,
