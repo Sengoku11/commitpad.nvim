@@ -179,6 +179,9 @@ Pane navigation:
 - `<C-j>`, `<C-k>`: move focus between input panes
 - `j`, `k`, `<Down>`, `<Up>`: smart vertical movement across panes
 - With status pane enabled:
+  - `mappings.commit` (default `<leader><CR>`), `mappings.commit_and_push`
+    (default `<leader>gp`), and `mappings.clear_or_reset` (default `<C-l>`)
+    also work when focus is in the status pane.
   - `l`, `<Right>` from input edge: jump to status pane
   - `h`, `<Left>` at status column 1: jump back to input
   - `mappings.jump_to_status` (default `<leader>l`), `]]`: jump to status pane

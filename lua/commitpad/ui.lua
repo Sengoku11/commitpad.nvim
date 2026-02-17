@@ -573,19 +573,19 @@ function M.open(opts)
 		status:setup_autocmds(close_augroup)
 	end
 
-	local function apply_win_opts(win, opts)
-		opts = opts or {}
-		local spell = opts.spell
+	local function apply_win_opts(win, win_opts_raw)
+		local win_opts = win_opts_raw or {}
+		local spell = win_opts.spell
 		if spell == nil then
 			-- Inherit from global vim.go.spell by default.
 			spell = vim.go.spell
 		end
 		pcall(vim.api.nvim_set_option_value, "spell", spell, { win = win })
-		if opts.wrap ~= nil then
-			pcall(vim.api.nvim_set_option_value, "wrap", opts.wrap, { win = win })
+		if win_opts.wrap ~= nil then
+			pcall(vim.api.nvim_set_option_value, "wrap", win_opts.wrap, { win = win })
 		end
-		if opts.linebreak ~= nil then
-			pcall(vim.api.nvim_set_option_value, "linebreak", opts.linebreak, { win = win })
+		if win_opts.linebreak ~= nil then
+			pcall(vim.api.nvim_set_option_value, "linebreak", win_opts.linebreak, { win = win })
 		end
 	end
 
@@ -646,54 +646,46 @@ function M.open(opts)
 		)
 	end
 
-	-- Apply shared mappings to all active buffers
-	local active_buffers = { title_buf, desc_buf }
-	if footer_buf then
-		table.insert(active_buffers, footer_buf)
+	-- stylua: ignore
+	local function map_primary_actions(buf, clear_modes, close_desc)
+		map(buf, "n", "q", close_with_save, close_desc)
+		map(buf, "n", "<Esc>", close_with_save, close_desc)
+		if is_amend then
+			map(buf, clear_modes, map_clear_or_reset, do_reset_amend, "Reset to HEAD")
+		else
+			map(buf, clear_modes, map_clear_or_reset, clear_all, "Clear Body/Title")
+		end
+		map(buf, "n", map_commit, function() do_commit(false) end, "Commit")
+		map(buf, "n", map_commit_and_push, function() do_commit(true) end, "Commit and Push")
+		map(buf, "n", "<Tab>", toggle_focus, "Toggle focus")
 	end
 
-	-- stylua: ignore
-	for _, b in ipairs(active_buffers) do
-		map(b, "n", "q", close_with_save, "Close (Auto-Save)")
-		map(b, "n", "<Esc>", close_with_save, "Close (Auto-Save)")
+	local input_buffers = { title_buf, desc_buf }
+	if footer_buf then
+		table.insert(input_buffers, footer_buf)
+	end
 
+	for _, buf in ipairs(input_buffers) do
+		map_primary_actions(buf, { "n", "i" }, "Close (Auto-Save)")
 		-- Prevents jump out of the CommitPad popup
-		map(b, "n", "<C-w><C-l>", close_with_save, "Close (Auto-Save)")
-		map(b, "n", "<C-w><C-h>", close_with_save, "Close (Auto-Save)")
-
-		if is_amend then
-			map(b, { "n", "i" }, map_clear_or_reset, do_reset_amend, "Reset to HEAD")
-		else
-			map(b, { "n", "i" }, map_clear_or_reset, clear_all, "Clear Body/Title")
-		end
-
-		map(b, { "n" }, map_commit, function() do_commit(false) end, "Commit")
-		map(b, { "n" }, map_commit_and_push, function() do_commit(true) end, "Commit and Push")
-		map(b, { "n" }, "<Tab>", toggle_focus, "Toggle focus")
+		map(buf, "n", "<C-w><C-l>", close_with_save, "Close (Auto-Save)")
+		map(buf, "n", "<C-w><C-h>", close_with_save, "Close (Auto-Save)")
 
 		if status_popup then
 			-- Jump to the Status box
-			map(b, { "n" }, map_jump_to_status, jump_to_status, "Jump to Status")
-			map(b, { "n" }, "]]", jump_to_status, "Jump to Status")
+			map(buf, "n", map_jump_to_status, jump_to_status, "Jump to Status")
+			map(buf, "n", "]]", jump_to_status, "Jump to Status")
 		end
 	end
 
-	-- Mappings for Status Popup
 	-- stylua: ignore
 	if status_popup then
-		map(status_popup.bufnr, "n", "q", close_with_save, "Close")
-		map(status_popup.bufnr, "n", "<Esc>", close_with_save, "Close")
-		map(status_popup.bufnr, "n", map_jump_to_input, jump_from_status, "Jump to Input")
-		map(status_popup.bufnr, "n", "[[", jump_from_status, "Jump to Input")
-		map(status_popup.bufnr, "n", "<Tab>", toggle_focus, "Toggle focus")
-		map(
-			status_popup.bufnr,
-			"n",
-			map_stage_toggle,
-			function() status:toggle_stage_under_cursor(Git, root, total_width) end,
-			"Toggle Stage"
-		)
-		map(status_popup.bufnr, "n", "yy", function() status:yank_line() end, "Yank Full Status Line")
+		local buf = status_popup.bufnr
+		map_primary_actions(buf, "n", "Close")
+		map(buf, "n", map_jump_to_input, jump_from_status, "Jump to Input")
+		map(buf, "n", "[[", jump_from_status, "Jump to Input")
+		map(buf, "n", map_stage_toggle, function() status:toggle_stage_under_cursor(Git, root, total_width) end, "Toggle Stage")
+		map(buf, "n", "yy", function() status:yank_line() end, "Yank Full Status Line")
 	end
 
 	-- Specific navigation
@@ -819,7 +811,7 @@ function M.open(opts)
 	end
 
 	-- Apply smart navigation to all buffers
-	for _, b in ipairs(active_buffers) do
+	for _, b in ipairs(input_buffers) do
 		map(b, "n", "j", smart_j, "Smart Down")
 		map(b, "n", "k", smart_k, "Smart Up")
 		map(b, "n", "<Down>", smart_j, "Smart Down")
@@ -833,8 +825,12 @@ function M.open(opts)
 
 	-- Apply smart_h to status buffer
 	if status_popup then
-		map(status_popup.bufnr, "n", "<Down>", function() move_status(1) end, "Move Down")
-		map(status_popup.bufnr, "n", "<Up>", function() move_status(-1) end, "Move Up")
+		map(status_popup.bufnr, "n", "<Down>", function()
+			move_status(1)
+		end, "Move Down")
+		map(status_popup.bufnr, "n", "<Up>", function()
+			move_status(-1)
+		end, "Move Up")
 		map(status_popup.bufnr, "n", "h", smart_h, "Smart Left")
 		map(status_popup.bufnr, "n", "<Left>", smart_h, "Smart Left")
 	end
