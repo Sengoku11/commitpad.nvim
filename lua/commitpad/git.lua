@@ -8,6 +8,14 @@ local M = {}
 ---@field path string The file path
 ---@field partial boolean Whether the file is partially staged
 
+---@class GitLineTotals
+---@field added integer
+---@field deleted integer
+
+---@class GitStatusTotals
+---@field staged GitLineTotals
+---@field unstaged GitLineTotals
+
 --- Execute a git command.
 ---@param args string[] Arguments for the git command
 ---@param cwd? string Working directory
@@ -117,18 +125,70 @@ local function parse_status_output(out)
 	return staged, unstaged
 end
 
+---@return GitStatusTotals
+local function empty_status_totals()
+	return {
+		staged = { added = 0, deleted = 0 },
+		unstaged = { added = 0, deleted = 0 },
+	}
+end
+
+--- Parse `git diff --numstat` output into total added/deleted counters.
+---@param out string
+---@return GitLineTotals
+local function parse_numstat_totals(out)
+	local totals = { added = 0, deleted = 0 }
+	for _, line in ipairs(vim.split(out, "\n")) do
+		local added_raw, deleted_raw = line:match("^(%S+)%s+(%S+)%s+")
+		if added_raw and deleted_raw then
+			-- Binary diffs emit "-" for both columns; skip those from line totals.
+			local added = tonumber(added_raw)
+			local deleted = tonumber(deleted_raw)
+			if added then
+				totals.added = totals.added + added
+			end
+			if deleted then
+				totals.deleted = totals.deleted + deleted
+			end
+		end
+	end
+	return totals
+end
+
+--- Collect line-change totals for staged and unstaged tracked changes.
+---@param root string
+---@param callback fun(totals: GitStatusTotals)
+local function get_status_totals_async(root, callback)
+	local opts = { text = true, cwd = root }
+	vim.system({ "git", "diff", "--cached", "--numstat" }, opts, function(staged_obj)
+		local totals = empty_status_totals()
+		if staged_obj.code == 0 then
+			totals.staged = parse_numstat_totals(staged_obj.stdout or "")
+		end
+
+		vim.system({ "git", "diff", "--numstat" }, opts, function(unstaged_obj)
+			if unstaged_obj.code == 0 then
+				totals.unstaged = parse_numstat_totals(unstaged_obj.stdout or "")
+			end
+			callback(totals)
+		end)
+	end)
+end
+
 --- Get status lists for staged and unstaged files (Async).
 ---@param root string
----@param callback fun(staged: GitStatusFile[], unstaged: GitStatusFile[])
+---@param callback fun(staged: GitStatusFile[], unstaged: GitStatusFile[], totals: GitStatusTotals)
 function M.get_status_files_async(root, callback)
 	-- PERF: Async execution prevents blocking the main thread during heavy git status scans.
 	vim.system({ "git", "status", "--porcelain", "-u" }, { text = true, cwd = root }, function(obj)
 		if obj.code ~= 0 then
-			callback({}, {})
+			callback({}, {}, empty_status_totals())
 			return
 		end
 		local staged, unstaged = parse_status_output(obj.stdout or "")
-		callback(staged, unstaged)
+		get_status_totals_async(root, function(totals)
+			callback(staged, unstaged, totals)
+		end)
 	end)
 end
 

@@ -24,6 +24,7 @@ local DEFAULT_MAPPINGS = {
 ---@class CommitPadResolvedHintsOptions
 ---@field controls boolean Display control hints in the input popup border
 ---@field titles boolean Display title/footer annotations in popup borders
+---@field diff_counts boolean Display line-diff totals (+X -Y) in status headers
 
 ---@class CommitPadResolvedOptions
 ---@field footer boolean Show the footer buffer
@@ -40,6 +41,7 @@ local DEFAULT_OPTIONS = {
 	hints = {
 		controls = true,
 		titles = true,
+		diff_counts = true,
 	},
 	mappings = DEFAULT_MAPPINGS,
 }
@@ -47,6 +49,7 @@ local DEFAULT_OPTIONS = {
 ---@class CommitPadHintsOptions
 ---@field controls? boolean Display control hints in the input popup border (default: true)
 ---@field titles? boolean Display title/footer annotations in popup borders (default: true)
+---@field diff_counts? boolean Display staged/unstaged line-diff totals in status headers (default: true)
 
 ---@class CommitPadMappingsOptions
 ---@field commit? string Commit/amend action override (default: "<leader><CR>")
@@ -59,7 +62,7 @@ local DEFAULT_OPTIONS = {
 ---@class CommitPadOptions
 ---@field footer? boolean Show the footer buffer (default: false)
 ---@field stage_files? boolean Show staged files sidebar (default: false)
----@field hints? CommitPadHintsOptions Hint display options (default: { controls = true, titles = true })
+---@field hints? CommitPadHintsOptions Hint display options (default: { controls = true, titles = true, diff_counts = true })
 ---@field mappings? CommitPadMappingsOptions CommitPad-local mappings
 ---@field command? string Command name (default: "CommitPad")
 ---@field amend_command? string Amend command name (default: "CommitPadAmend")

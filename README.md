@@ -61,6 +61,7 @@ opts = {
   hints = {
     controls = true, -- Display control hints in the popup border
     titles = true, -- Display annotations in popup titles
+    diff_counts = true, -- Display +added -deleted lines count in status headers
   },
   mappings = {
     commit = "<leader><CR>",

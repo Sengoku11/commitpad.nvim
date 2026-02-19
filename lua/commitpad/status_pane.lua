@@ -1,5 +1,6 @@
 ---@class CommitPadStatusPaneModule
 local M = {}
+local Config = require("commitpad.config")
 local Utils = require("commitpad.utils")
 
 ---@class CommitPadStatusLineMeta
@@ -126,7 +127,7 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 	local s_win = self.popup.winid
 	git.get_status_files_async(
 		root,
-		vim.schedule_wrap(function(staged_list, unstaged_list)
+		vim.schedule_wrap(function(staged_list, unstaged_list, totals)
 			if not vim.api.nvim_buf_is_valid(s_buf) then
 				return
 			end
@@ -135,6 +136,9 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 			local formatted_lines = {}
 			local by_name = {}
 			self.line_meta = {}
+			local show_diff_counts = Config.options.hints.diff_counts ~= false
+			local staged_totals = (totals and totals.staged) or { added = 0, deleted = 0 }
+			local unstaged_totals = (totals and totals.unstaged) or { added = 0, deleted = 0 }
 
 			local function map_files(list)
 				for _, f in ipairs(list) do
@@ -147,10 +151,38 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 			map_files(unstaged_list)
 
 			local status_box_width = math.floor(total_width * 0.3)
-			-- Effective text width: box width - 2 (borders) - 3 (status "M ").
-			local max_len = math.max(5, status_box_width - 5)
+			if s_win and vim.api.nvim_win_is_valid(s_win) then
+				status_box_width = vim.api.nvim_win_get_width(s_win)
+			end
 			-- Effective text width: box width - 2 (borders).
-			local branch_max_len = math.max(5, status_box_width - 2)
+			local content_width = math.max(5, status_box_width - 2)
+			-- Effective text width: content width - 3 (status "M ").
+			local max_len = math.max(5, content_width - 3)
+			local branch_max_len = content_width
+
+			---@param section_name string
+			---@param count integer
+			---@param section_totals GitLineTotals
+			---@return string
+			local function format_section_header(section_name, count, section_totals)
+				local label = string.format("%s (%d)", section_name, count)
+				if not show_diff_counts then
+					if vim.fn.strchars(label) > content_width then
+						return vim.fn.strcharpart(label, 0, math.max(1, content_width - 1)) .. "…"
+					end
+					return label
+				end
+
+				local summary = string.format("+%d -%d", section_totals.added, section_totals.deleted)
+				local summary_len = vim.fn.strchars(summary)
+				local max_label_len = math.max(1, content_width - summary_len - 1)
+				if vim.fn.strchars(label) > max_label_len then
+					label = vim.fn.strcharpart(label, 0, math.max(1, max_label_len - 1)) .. "…"
+				end
+
+				local spaces = math.max(1, content_width - vim.fn.strchars(label) - summary_len)
+				return label .. string.rep(" ", spaces) .. summary
+			end
 
 			local branch_name = git.current_branch(root)
 			if not branch_name then
@@ -229,7 +261,7 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 			end
 
 			if #staged_list > 0 then
-				table.insert(formatted_lines, string.format("Staged (%d)", #staged_list))
+				table.insert(formatted_lines, format_section_header("Staged", #staged_list, staged_totals))
 				format_and_append(staged_list, "staged")
 			end
 
@@ -237,7 +269,7 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 				if #staged_list > 0 then
 					table.insert(formatted_lines, "")
 				end
-				table.insert(formatted_lines, string.format("Unstaged (%d)", #unstaged_list))
+				table.insert(formatted_lines, format_section_header("Unstaged", #unstaged_list, unstaged_totals))
 				format_and_append(unstaged_list, "unstaged")
 			end
 
@@ -424,6 +456,7 @@ function StatusPane:apply_highlights()
 	local unstaged_heading_hl = pick_hl("fugitiveUnstagedHeading", "Macro")
 	local count_hl = pick_hl("fugitiveCount", "Number")
 
+	-- Apply status-pane match highlights in the popup window context.
 	vim.api.nvim_win_call(self.popup.winid, function()
 		-- Branch line (row 1): match fugitive's "Head:" label color.
 		vim.fn.matchaddpos(branch_hl, { { 1 } }, 15)
@@ -436,10 +469,12 @@ function StatusPane:apply_highlights()
 		-- Highlight star specifically with high priority
 		vim.fn.matchadd("Special", [[\v^.\zs\*\ze\s]], 20)
 		-- Headers
-		vim.fn.matchadd(staged_heading_hl, [[^Staged\ze (\d\+)$]])
-		vim.fn.matchadd(unstaged_heading_hl, [[^Unstaged\ze (\d\+)$]])
-		vim.fn.matchadd(count_hl, [[\v^Staged \(\zs\d+\ze\)$]])
-		vim.fn.matchadd(count_hl, [[\v^Unstaged \(\zs\d+\ze\)$]])
+		vim.fn.matchadd(staged_heading_hl, [[^Staged\ze (\d\+)]])
+		vim.fn.matchadd(unstaged_heading_hl, [[^Unstaged\ze (\d\+)]])
+		vim.fn.matchadd(count_hl, [[\v^Staged \(\zs\d+\ze\)]])
+		vim.fn.matchadd(count_hl, [[\v^Unstaged \(\zs\d+\ze\)]])
+		vim.fn.matchadd("String", [[\v^(Staged|Unstaged) \(\d+\)\s+\zs\+\d+]])
+		vim.fn.matchadd("ErrorMsg", [[\v^(Staged|Unstaged) \(\d+\)\s+\+\d+\s+\zs-\d+]])
 	end)
 end
 

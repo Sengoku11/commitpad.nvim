@@ -45,7 +45,7 @@ Example with lazy.nvim:
       opts = {
         footer = false,
         stage_files = false,
-        hints = { controls = true, titles = true },
+        hints = { controls = true, titles = true, diff_counts = true },
         mappings = {
           commit = "<leader><CR>",
           commit_and_push = "<leader>gp",
@@ -94,6 +94,8 @@ All options are passed to `require("commitpad").setup({...})`.
                                                   *commitpad-option-stage-files*
 `stage_files` (boolean, default: `false`)
     Show a right-side status pane listing staged and unstaged files.
+    Section headers can include tracked line-change totals (`+added -deleted`)
+    when `hints.diff_counts` is enabled.
 
                                                         *commitpad-option-hints*
 `hints.controls` (boolean, default: `true`)
@@ -104,6 +106,10 @@ All options are passed to `require("commitpad").setup({...})`.
 `hints.titles` (boolean, default: `true`)
     Show title/footer annotations in popup borders (`[Amend]`,
     `(Persistent)`).
+
+`hints.diff_counts` (boolean, default: `true`)
+    Show tracked line-change totals (`+added -deleted`) at the right side of
+    staged/unstaged section headers in the status pane.
 
                                                      *commitpad-option-mappings*
 `mappings` (table)
@@ -154,6 +160,8 @@ All options are passed to `require("commitpad").setup({...})`.
   - footer is preserved
 - `Commit & Push` pushes to `origin/<current-branch>`.
   In amend mode, it uses `--force-with-lease`.
+- With `stage_files = true` and `hints.diff_counts = true`, staged/unstaged
+  headers display tracked line totals in `+added -deleted` format.
 - Control hints in the title border auto-compact on narrow windows and may
   hide when space is too tight.
 
