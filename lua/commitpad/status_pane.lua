@@ -118,7 +118,9 @@ end
 ---@param total_width integer
 ---@param focus_path? string
 ---@param focus_section? "staged"|"unstaged"
-function StatusPane:refresh_async(git, root, total_width, focus_path, focus_section)
+---@param focus_row? integer
+---@param focus_index? integer
+function StatusPane:refresh_async(git, root, total_width, focus_path, focus_section, focus_row, focus_index)
 	if not self.popup then
 		return
 	end
@@ -281,21 +283,71 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 			vim.bo[s_buf].modifiable = true
 			vim.api.nvim_buf_set_lines(s_buf, 0, -1, false, formatted_lines)
 			vim.bo[s_buf].modifiable = false
-			if focus_path and s_win and vim.api.nvim_win_is_valid(s_win) then
-				local fallback_row = nil
-				for row, meta in ipairs(self.line_meta) do
-					if meta.full_path == focus_path then
-						if not fallback_row then
-							fallback_row = row
+			if s_win and vim.api.nvim_win_is_valid(s_win) then
+				local target_row = nil
+				if focus_section and focus_index then
+					local section_count = 0
+					local last_section_row = nil
+					for row = 1, #formatted_lines do
+						local meta = self.line_meta[row]
+						if meta and meta.full_path and meta.section == focus_section then
+							section_count = section_count + 1
+							last_section_row = row
+							if section_count == focus_index then
+								target_row = row
+								break
+							end
 						end
-						if focus_section == nil or meta.section == focus_section then
-							fallback_row = row
-							break
+					end
+
+					if not target_row then
+						target_row = last_section_row
+					end
+				end
+
+				if not target_row and focus_row then
+					local clamped_row = math.max(1, math.min(#formatted_lines, focus_row))
+					local function actionable_row(row)
+						local meta = self.line_meta[row]
+						if meta and meta.full_path then
+							return row
+						end
+						return nil
+					end
+
+					target_row = actionable_row(clamped_row)
+					if not target_row then
+						for distance = 1, #formatted_lines do
+							local down = actionable_row(clamped_row + distance)
+							if down then
+								target_row = down
+								break
+							end
+
+							local up = actionable_row(clamped_row - distance)
+							if up then
+								target_row = up
+								break
+							end
 						end
 					end
 				end
-				if fallback_row then
-					pcall(vim.api.nvim_win_set_cursor, s_win, { fallback_row, 0 })
+
+				if not target_row and focus_path then
+					for row = 1, #formatted_lines do
+						local meta = self.line_meta[row]
+						if meta.full_path == focus_path then
+							if focus_section == nil or meta.section == focus_section then
+								target_row = row
+								break
+							end
+							target_row = target_row or row
+						end
+					end
+				end
+
+				if target_row then
+					pcall(vim.api.nvim_win_set_cursor, s_win, { target_row, 0 })
 				end
 			end
 			self:render_hover()
@@ -332,18 +384,19 @@ end
 ---@param total_width integer
 ---@param meta CommitPadStatusLineMeta
 ---@param opts CommitPadStatusCursorActionOpts
-local function run_file_action(self, git, root, total_width, meta, opts)
+---@param row integer
+---@param section_index integer
+local function run_file_action(self, git, root, total_width, meta, opts, row, section_index)
 	local path = meta.full_path
 	if not path then
 		Utils.notify("No file under cursor.", vim.log.levels.WARN)
 		return
 	end
 
-	local section = meta.section
 	opts.execute(git, root, path, function(result)
 		vim.schedule(function()
 			if result and result.code == 0 then
-				self:refresh_async(git, root, total_width, path, section)
+				self:refresh_async(git, root, total_width, nil, meta.section, row, section_index)
 				return
 			end
 			Utils.notify(
@@ -360,6 +413,8 @@ local function run_file_action(self, git, root, total_width, meta, opts)
 end
 
 ---@return CommitPadStatusLineMeta|nil
+---@return integer|nil
+---@return integer|nil
 function StatusPane:file_under_cursor()
 	if not self.popup then
 		return nil
@@ -376,7 +431,15 @@ function StatusPane:file_under_cursor()
 		return nil
 	end
 
-	return meta
+	local section_index = 0
+	for index = 1, row do
+		local row_meta = self.line_meta[index]
+		if row_meta and row_meta.full_path and row_meta.section == meta.section then
+			section_index = section_index + 1
+		end
+	end
+
+	return meta, row, section_index
 end
 
 ---Toggle stage/unstage for file under cursor in status pane and refresh status view.
@@ -384,7 +447,7 @@ end
 ---@param root string
 ---@param total_width integer
 function StatusPane:toggle_stage_under_cursor(git, root, total_width)
-	local meta = self:file_under_cursor()
+	local meta, row, section_index = self:file_under_cursor()
 	if not meta then
 		Utils.notify("No file under cursor.", vim.log.levels.WARN)
 		return
@@ -412,7 +475,7 @@ function StatusPane:toggle_stage_under_cursor(git, root, total_width)
 		return
 	end
 
-	run_file_action(self, git, root, total_width, meta, opts)
+	run_file_action(self, git, root, total_width, meta, opts, row, section_index)
 end
 
 ---Attach status hover autocmds to a shared lifecycle augroup.
