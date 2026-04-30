@@ -6,6 +6,8 @@ local Utils = require("commitpad.utils")
 ---@class CommitPadStatusLineMeta
 ---@field full_line string
 ---@field full_path? string
+---@field hover_col? integer
+---@field hover_text? string
 ---@field section? "staged"|"unstaged"
 ---@field partial? boolean
 ---@field show_hover boolean
@@ -80,17 +82,19 @@ function StatusPane:render_hover()
 		return
 	end
 
+	local hover_text = meta.hover_text or meta.full_line
+	local hover_col = meta.hover_col or 0
 	local hover_buf = self:ensure_hover_buf()
 	vim.bo[hover_buf].modifiable = true
-	vim.api.nvim_buf_set_lines(hover_buf, 0, -1, false, { meta.full_line })
+	vim.api.nvim_buf_set_lines(hover_buf, 0, -1, false, { hover_text })
 	vim.bo[hover_buf].modifiable = false
 
 	local config = {
 		relative = "win",
 		win = s_win,
 		row = row - 1,
-		col = 0,
-		width = math.max(1, math.min(vim.o.columns, vim.fn.strdisplaywidth(meta.full_line))),
+		col = hover_col,
+		width = math.max(1, math.min(vim.o.columns, vim.fn.strdisplaywidth(hover_text))),
 		height = 1,
 		style = "minimal",
 		focusable = false,
@@ -255,6 +259,8 @@ function StatusPane:refresh_async(git, root, total_width, focus_path, focus_sect
 					self.line_meta[#formatted_lines] = {
 						full_line = full_line,
 						full_path = f.path,
+						hover_col = 3,
+						hover_text = f.path,
 						section = section,
 						partial = f.partial,
 						show_hover = (display_line ~= full_line) or over_limit_before_trunc,
